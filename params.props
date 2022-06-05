@@ -1,0 +1,12 @@
+Tc=121
+CmaxHonor=20
+Cmax=17
+ThesisCourseCode=ITC4979
+SummerCmax=17
+SummerConcNMax=3
+SummerCmaxHonor=20
+Smax=40
+MaxLETerm=15
+ProgramCodes2Maximize=ITC\\MG-courses;MA\\LE-core-stat
+ProgramCode=ITC
+CourseCSVFileHeader=#Code;Name;Synonyms;Credits;Pre-requisites;Co-requisites;Terms Offered;Schedule Name;Difficulty Level
