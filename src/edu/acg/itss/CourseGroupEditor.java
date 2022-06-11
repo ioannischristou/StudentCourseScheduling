@@ -19,6 +19,12 @@ import javax.swing.*;
  */
 public class CourseGroupEditor extends javax.swing.JFrame {
 
+    /**
+     * name of directory relative to the app root holding all files needed by
+     * the app. The dir-name is given in the cmd-line.
+     */
+    private static String _dir2Files = null;
+    
     private ScheduleParams _params;
     private DefaultListModel _groupsListModel = new DefaultListModel();
     private DefaultListModel _coursesListModel = new DefaultListModel();
@@ -38,10 +44,10 @@ public class CourseGroupEditor extends javax.swing.JFrame {
      * populates the list models in this GUI form.
      */
     private void populateListModels() {
-        _params = new ScheduleParams("params.props");
+        _params = new ScheduleParams(_dir2Files+"/params.props");
         int Smax = _params.getSmax();
-        Course.readAllCoursesFromFile("cls.csv", Smax);
-        File cur_dir = new File(".");
+        Course.readAllCoursesFromFile(_dir2Files+"/cls.csv", Smax);
+        File cur_dir = new File(_dir2Files);
         File[] cur_files = cur_dir.listFiles();        
         for (File f : cur_files) {
             if (f.isFile() && f.getName().endsWith("grp")) {
@@ -553,7 +559,7 @@ public class CourseGroupEditor extends javax.swing.JFrame {
         // save the course-group data
         String filename = _name2filenameMap.get(gname);
         
-        if (filename==null) filename = gname+".grp";
+        if (filename==null) filename = _dir2Files+"/"+gname+".grp";
         try(PrintWriter pw = new PrintWriter(new FileWriter(filename))) {
             // write first line
             pw.print(gname);
@@ -611,10 +617,15 @@ public class CourseGroupEditor extends javax.swing.JFrame {
 
     
     /**
-     * invoke without command-line arguments.
-     * @param args the command line arguments
+     * invoke with first cmd-line argument the name of the directory containing
+     * the files manipulated by the program.
+     * @param args the command line arguments with args[0] being the name of the
+     * directory relative to the app root where the (*.grp etc.) files are 
+     * located.
      */
     public static void main(String args[]) {
+        _dir2Files = args[0];
+        
         /* Set the Nimbus look and feel */
         //<editor-fold defaultstate="collapsed" desc=" Look and feel setting code (optional) ">
         /* If Nimbus (introduced in Java SE 6) is not available, stay with the default look and feel.

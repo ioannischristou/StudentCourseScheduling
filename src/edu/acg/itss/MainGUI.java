@@ -11,11 +11,16 @@ import java.time.LocalDate;
 import java.util.*;
 
 /**
- * main entry point to the application.
+ * main entry point to the ACG SCORER application.
  * @author itc
  */
 public class MainGUI extends javax.swing.JFrame {
 
+    /**
+     * path to all required files is given at command line.
+     */
+    private static String _dir2Files = null;
+   
     /**
      * model behind all courses maintains Course objects.
      */
@@ -106,6 +111,16 @@ public class MainGUI extends javax.swing.JFrame {
         }
         Set<String> conc_areas = CourseGroup.getAllConcentrationAreas();
         for (String name: conc_areas) this._concAreasModel.addElement(name);
+    }
+    
+    
+    /**
+     * get the directory name relative to the root of the application where the
+     * files are located. This string is gotten from the cmd-line arguments.
+     * @return String
+     */
+    public static String getDir2Files() {
+        return _dir2Files;
     }
     
 
@@ -850,9 +865,14 @@ public class MainGUI extends javax.swing.JFrame {
 
     
     /**
-     * @param args the command line arguments
+     * main class to start the ACG SCORER app.
+     * @param args the command line arguments must include as first argument
+     * the name of the directory relative to the current directory where all
+     * needed files (params.props, *.grp, and cls.csv) are to be found.
      */
     public static void main(String args[]) {
+        MainGUI._dir2Files = args[0];
+        
         /* Set the Nimbus look and feel */
         //<editor-fold defaultstate="collapsed" desc=" Look and feel setting code (optional) ">
         /* If Nimbus (introduced in Java SE 6) is not available, stay with the default look and feel.

@@ -36,7 +36,7 @@ public class CourseTests {
         System.out.println(termno+" corresponds to full term name: "+term);
         
         // 3. read courses, and print out 1st course
-        Course.readAllCoursesFromFile("cls.txt", 25);
+        Course.readAllCoursesFromFile("ITC/cls.csv", 25);
         Course c = Course.getCourseByCode("WP1212");
         System.err.println(c.getFullDetailsString(25));
         System.err.println("Terms in c: ");

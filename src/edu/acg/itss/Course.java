@@ -12,8 +12,8 @@ import javax.swing.JOptionPane;
 /**
  * class is responsible for maintaining all relevant course data.
  * The <CODE>CourseEditor</CODE> class provides the GUI for editing (adding,
- * modifying and/or deleting) courses in the "cls.csv" file where courses are 
- * stored.
+ * modifying and/or deleting) courses in the appropriate "cls.csv" file where 
+ * courses are stored.
  * @author itc
  */
 public class Course {
@@ -177,7 +177,10 @@ public class Course {
     
     /**
      * reads all courses from a text (CSV) file, and stores them in the class 
-     * data. The file is normally named "cls.csv".
+     * data. The file is normally named "cls.csv", and lives in an appropriate
+     * sub-directory of the root directory of the app (which must be passed as
+     * input argument from the cmd-line of the appropriate class program, such 
+     * as <CODE>MainGUI</CODE> or <CODE>CourseEditor</CODE>.
      * The file read must have the following format: 
      * There will be one line for each course, and the line will have the 
      * following format:
@@ -214,7 +217,8 @@ public class Course {
     public static void readAllCoursesFromFile(String filename, int Smax) {
         // course description in a CSV file (semi-column separated values) with
         // the following format:
-        // <code>;<name>;[aka ]*;<credits>;[prereqCNF[,]]*;[coreq ]*;[term ]*
+        // <code>;<name>;[aka ]*;<credits>;[prereqCNF[,]]*;[coreq ]*;[term ]* |-
+        // [;schedulename][;difficultylevel]
         String line=null;
         try(BufferedReader br = new BufferedReader(new FileReader(filename))) {
             while (true) {

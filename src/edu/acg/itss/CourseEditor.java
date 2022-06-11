@@ -9,15 +9,19 @@ import javax.swing.JOptionPane;
 
 /**
  * class responsible for presenting a GUI for editing courses in the "cls.csv"
- * main file. The program presents at any time a form for a particular course
- * details. Any changes the user makes to this form won't be saved in memory 
- * unless the user presses the "Save Course Changes" button. Even so, no changes
- * will be written to disk until the user presses the "Save to Disk" button, 
- * which essentially "commits" all changes made to courses so far.
+ * main file living in a sub-directory of the root app directory, specified in
+ * the cmd-line of this program. The program presents at any time a form for a 
+ * particular course details. Any changes the user makes to this form won't be 
+ * saved in memory unless the user presses the "Save Course Changes" button. 
+ * Even so, no changes will be written to disk until the user presses the 
+ * "Save to Disk" button, which essentially "commits" all changes made to 
+ * courses so far.
  * @author itc
  */
 public class CourseEditor extends javax.swing.JFrame {
 
+    private static String _dir2Files = null;
+    
     private ScheduleParams _params;
     
     
@@ -31,8 +35,8 @@ public class CourseEditor extends javax.swing.JFrame {
 
     
     /**
-     * reads data from the "cls.csv" file to populate the <CODE>Course</CODE>
-     * class.
+     * reads data from the "cls.csv" and "params.props" files living in user
+     * specified directories, to populate the <CODE>Course</CODE> class.
      */
     private void readData() {
         LocalDate now = LocalDate.now();
@@ -42,8 +46,8 @@ public class CourseEditor extends javax.swing.JFrame {
         CurrentDate._curDay = cur_day;
         CurrentDate._curMonth = cur_mon;
         CurrentDate._curYear = cur_year;
-        _params = new ScheduleParams("params.props");
-        Course.readAllCoursesFromFile("cls.csv", _params.getSmax());
+        _params = new ScheduleParams(_dir2Files+"/params.props");
+        Course.readAllCoursesFromFile(_dir2Files+"/cls.csv", _params.getSmax());
         // populate fields in form
         if (Course.getNumCourses()>0) {
             Course c = Course.getCourseById(0);
@@ -454,13 +458,14 @@ public class CourseEditor extends javax.swing.JFrame {
         // with the new data
         try {
             // make back-up file
-            File src = new File("cls.csv");
-            File dest = new File("cls.csv.bak");
+            File src = new File(_dir2Files+"/cls.csv");
+            File dest = new File(_dir2Files+"/cls.csv.bak");
             if (dest.exists()) dest.delete();
             Files.copy(src.toPath(), dest.toPath());
             // now overwrite main file
             final int Smax = _params.getSmax();
-            PrintWriter pw = new PrintWriter(new FileWriter("cls.csv"));
+            PrintWriter pw = 
+                    new PrintWriter(new FileWriter(_dir2Files+"/cls.csv"));
             // first print the header line so we know what each column is about
             pw.println("#"+_params.getCourseCSVFileHeader());
             final int last_id = Course.getLastId();
@@ -533,9 +538,14 @@ public class CourseEditor extends javax.swing.JFrame {
     
     /**
      * invoke without any command-line arguments.
-     * @param args the command line arguments
+     * @param args the command line arguments the first argument must be the 
+     * name of the directory relative to the root of the app where the files 
+     * to check ("cls.csv", "params.props") are located.
      */
     public static void main(String args[]) {
+        
+        _dir2Files = args[0];
+        
         /* Set the Nimbus look and feel */
         //<editor-fold defaultstate="collapsed" desc=" Look and feel setting code (optional) ">
         /* If Nimbus (introduced in Java SE 6) is not available, stay with the default look and feel.

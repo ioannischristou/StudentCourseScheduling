@@ -9,6 +9,9 @@ import java.util.*;
  * class creates and handles the student course scheduling Binary Programming 
  * problem, passing it to a MIP solver (SCIP or GUROBI) to be solved. It creates
  * the problem in a .lp formatted file.
+ * Notice that this class is only used by the <CODE>MainGUI</CODE> class of this
+ * package, which in turn during start-up knows which directory contains the 
+ * files to read from.
  * @author itc
  */
 public class MIPHandler {
@@ -47,34 +50,39 @@ public class MIPHandler {
     
     
     /**
-     * reads all data from files in the current directory. This includes every
-     * group-data file, as well as the schedule params file. Group data files
-     * end with extension ".grp" (details of their format are found in the docs
-     * for class <CODE>CourseGroup</CODE>), and the schedule param file is 
-     * "params.props".
-     * The course data are read from file "cls.csv". Details of this file's 
-     * format are in the javadocs for class <CODE>Course</CODE>.
-     * If the file "passedcourses.txt" exists, it reads all course 
-     * numbers the student has already passed: the file consists of course 
-     * codes separated by semi-column. Same holds for desired courses that must
-     * be present in the file "desiredcourses.txt" to be read from file.
+     * reads all data from files in the specified directory in the class
+     * <CODE>MainGUI</CODE> as well as some optional files in the current 
+     * directory. This includes every group-data file, as well as the schedule 
+     * params file. Group data files end with extension ".grp" (details of their 
+     * format are found in the docs for class <CODE>CourseGroup</CODE>), and the 
+     * schedule param file is "params.props".
+     * The course data are read from file "cls.csv" (in the specific program 
+     * directory currently in use). Details of this file's format are in the 
+     * javadocs for class <CODE>Course</CODE>.
+     * If the file "passedcourses.txt" exists in the current directory, it reads 
+     * all course numbers the student has already passed: the file consists of 
+     * course codes separated by semi-column. Desired courses must be present in 
+     * the file "desiredcourses.txt" to be read from the current directory too.
      */
     public void readProblemData() {
-        _params = new ScheduleParams("params.props");
-        Course.readAllCoursesFromFile("cls.csv", _params.getSmax());
+        final String dir2Files = MainGUI.getDir2Files();
+        _params = new ScheduleParams(dir2Files+"/params.props");
+        Course.readAllCoursesFromFile(dir2Files+"/cls.csv", _params.getSmax());
         _passed = new PassedCourses();
+        File psd = new File("passedcourses.txt");
+        if (psd.exists()) {
+            _passed.readPassedCoursesFromFile("passedcourses.txt");
+        }
         _desired = new DesiredCourses();
-        File cur_dir = new File(".");
+        File dsd = new File("desiredcourses.txt");
+        if (dsd.exists()) {
+            _desired.readDesiredCoursesFromFile("desiredcourses.txt");
+        }        
+        File cur_dir = new File(dir2Files);
         File[] cur_files = cur_dir.listFiles();
         for (File f : cur_files) {
             if (f.isFile() && f.getName().endsWith("grp")) {
-                CourseGroup.readCourseGroup(f.getName());
-            }
-            else if (f.getName().endsWith("passedcourses.txt")) {
-                _passed.readPassedCoursesFromFile(f.getName());
-            }
-            else if (f.getName().endsWith("desiredcourses.txt")) {
-                _desired.readDesiredCoursesFromFile(f.getName());
+                CourseGroup.readCourseGroup(f.getAbsolutePath());
             }
         }
         // in case of data entry errors: remove any passed courses from the 
@@ -1021,13 +1029,14 @@ public class MIPHandler {
         pwr.flush();
         pwr.close();
         final int Smax = _params.getSmax();
-        sb.append("\n----- Credits Taken  So Far\t: "+num_credits_taken);
-        sb.append("\n----- Credits  To  Take Yet\t: "+num_credits_to_take);
+        sb.append("\n----- Credits Taken So Far\t\t: "+num_credits_taken);
+        sb.append("\n----- Credits To Take Yet\t\t: "+num_credits_to_take);
         sb.append("\n----- TOTAL CREDITS OVERALL\t: "+total_credits+"\n");
         for (int s=1; s<=Smax; s++) {
             List<String> crs_lst = sem_courses_map.get(s);
             if (crs_lst!=null) {
-                String sem_descr="--- "+Course.getTermNameByTermNo(s)+" ---\n";
+                String sem_descr="     --- "+Course.getTermNameByTermNo(s)+
+                                 " ---\n";
                 sb.append(sem_descr);
                 for (String c : crs_lst) sb.append(c+"\n");
             }
@@ -1038,7 +1047,12 @@ public class MIPHandler {
     
     
     /**
-     * return a copy of the last computed solution.
+     * return a copy of the last computed solution. The solution is returned as
+     * a map from course-id (not course-code), to the term-number during which
+     * the course is to be taken; if a course-id does not appear in the map keys
+     * the course is not part of the optimal schedule. See the static method
+     * <CODE>Course.getTermNameByTermNo()</CODE> for a method to obtain the 
+     * full name of a term (such as "FA2022") given its term number.
      * @return HashMap&lt;Integer, Integer&gt;
      */
     public HashMap<Integer, Integer> getLastOptimalSolution() {
