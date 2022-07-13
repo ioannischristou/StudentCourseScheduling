@@ -1,7 +1,7 @@
 # StudentCourseScheduling
-The ACG Student Course Planner (SCORER)
+The ACG Student Course Planner (SCORER).
 The project allows the American College of Greece automatically create course plans for the students of its programs. 
-The current set-up files are for the Information Technology program only, but any ACG program can be set-up using
+The current set-up files are for the Information Technology and the Cybersecurity and Networks programs only, but any ACG program can be set-up using
 appropriate set-up files. There are 3 separate desktop (swing) applications that comprise the ACG SCORER: the class
 MainGUI that allows the user to create a course plan for a student, after providing the relevant student data (history
 and preferences); the class CourseEditor that allows an admin to edit course data; and the class CourseGroupEditor 

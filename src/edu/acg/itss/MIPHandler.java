@@ -6,9 +6,11 @@ import java.util.*;
 
 
 /**
- * class creates and handles the student course scheduling Binary Programming 
- * problem, passing it to a MIP solver (SCIP or GUROBI) to be solved. It creates
- * the problem in a .lp formatted file.
+ * class creates and handles the student course scheduling Mixed Integer 
+ * Programming problem, passing it to a MIP solver (SCIP or GUROBI) to solve. It 
+ * creates the problem in a .lp formatted file, and as such, is the most complex
+ * class of the entire application, maintaining the logic for creating all 
+ * constraints and objectives.
  * Notice that this class is only used by the <CODE>MainGUI</CODE> class of this
  * package, which in turn during start-up knows which directory contains the 
  * files to read from.
@@ -63,6 +65,12 @@ public class MIPHandler {
      * all course numbers the student has already passed: the file consists of 
      * course codes separated by semi-column. Desired courses must be present in 
      * the file "desiredcourses.txt" to be read from the current directory too.
+     * Finally, if the file "estimated_grades.txt" exists in the current dir, it
+     * reads all course numbers for which there exists an estimate (from QARMA)
+     * of the grade the student is going to get, and sets the appropriate field
+     * in the right <CODE>Course</CODE> objects (default is zero which does not
+     * modify the problem at all), assuming the estimated grade is above the 
+     * minimum threshold set in property "MinGradeThres".
      */
     public void readProblemData() {
         final String dir2Files = MainGUI.getDir2Files();
@@ -78,6 +86,26 @@ public class MIPHandler {
         if (dsd.exists()) {
             _desired.readDesiredCoursesFromFile("desiredcourses.txt");
         }        
+        File est = new File("estimated_grades.txt");
+        if (est.exists()) {
+            final float thres = _params.getMinGradeThres();
+            try (BufferedReader br = new BufferedReader(new FileReader(est))) {
+                while(true) {
+                    String line = br.readLine();
+                    if (line==null) break;  // EOF
+                    String[] vals = line.split(",");
+                    Course c = Course.getCourseByCode(vals[0]);
+                    float val = Float.parseFloat(vals[1].trim());
+                    if (val >= thres) {
+                        c.setEstimatedGrade(val);
+                    }
+                }
+            }
+            catch (Exception e) {  // cannot get here
+                e.printStackTrace();
+                System.exit(-1);
+            }
+        }
         File cur_dir = new File(dir2Files);
         File[] cur_files = cur_dir.listFiles();
         for (File f : cur_files) {
@@ -127,12 +155,18 @@ public class MIPHandler {
 
     
     /**
-     * creates the file "schedule.lp" that describes the Binary Programming 
+     * creates the file "schedule.lp" that describes the MIP Programming 
      * problem of the student course scheduling problem, with objective being a 
-     * weighted combination of time-to-completion, total-number-of-credits, and
-     * maximum-sum-of-course-difficulty-levels-per-semester. Always last, with
-     * coefficient -0.001, is the objective to maximize courses from designated
-     * program codes in the schedule params.
+     * weighted combination of time-to-completion, total-number-of-credits,
+     * maximum-sum-of-course-difficulty-levels-per-semester and sum-of-grades. 
+     * Always last, with coefficient -0.001, is the objective to maximize 
+     * courses from designated program codes in the schedule params. The 
+     * objective to maximize individual student GPA is also present and is 
+     * implemented by maximizing the weighted sum of courses taken with weights 
+     * equal to the estimated grade of the course (assuming such estimates are 
+     * known, and only for courses for which the estimate is above 3.0/4.0). 
+     * Notice that these estimates, if they exist, are in the file 
+     * "estimated_grades.txt".
      * Notice that despite the fact that this class holds references to the 
      * <CODE>[Passed | Desired]Courses</CODE> objects, the final say is whatever 
      * is selected in the GUI, and this is why these two sets are passed in as 
@@ -140,31 +174,39 @@ public class MIPHandler {
      * @param isHonorStudent boolean whether the student is an honors student
      * @param maxNumCrsPerSem int student-imposed max num courses per semester
      * @param maxNumCrsDurThesis int student-imposed max num courses during the
-     * semester when thesis is carried out (must be &ge; 1).
+     * semester when thesis is carried out (must be &ge; 1)
      * @param s1off boolean true iff the student wishes not to register
-     * for any course during the Summer1 session.
+     * for any course during the Summer1 session
      * @param s2off boolean true iff the student wishes not to register
-     * for any course during the Summer2 session.
+     * for any course during the Summer2 session
      * @param stoff boolean true iff the student wishes not to register
-     * for any course during the Summer-Term.
+     * for any course during the Summer-Term
+     * @param numCoursesPerTrm2StrMap Map&lt;Integer tno, String constr&gt; may
+     * have constraints on #courses to take on specific terms
      * @param passed Set&lt;String&gt; the set of courses the student has passed
+     * @param num_OU_cur_academic_year int the number of OU courses already 
+     * passed during the current academic year (0 if the next term is FALL)
      * @param desired Set&lt;String&gt; the set of courses the student wishes
      * to take; each string in the set may be either "ITC3160", or "ITC3160;"
      * which indicates student doesn't want to take the course, or it may be 
      * smth like "ITC3160;FA2022 SP2023" which indicates when student wants to
-     * take the course.
+     * take the course
      * @param concentration String the chosen concentration area
      * @param DNcoeff int the coefficient for the shortest-time-to-completion
      * @param DLcoeff int the coefficient for the max-sum-of-difficulty-levels
      * (per semester)
-     * @param Crcoeff in the coefficient for the total-sum-of-credits objective
+     * @param Crcoeff int the coefficient for the total-sum-of-credits objective
+     * @param Grcoeff int the coefficient for the expected-GPA objective
      */
     public void createMIPFile(boolean isHonorStudent,
                               int maxNumCrsPerSem, int maxNumCrsDurThesis,
                               boolean s1off, boolean s2off, boolean stoff,
-                              Set<String> passed, Set<String> desired,
+                              Map<Integer, String> numCoursesPerTrm2StrMap,
+                              Set<String> passed, int num_OU_cur_academic_year, 
+                              Set<String> desired,
                               String concentration,
-                              int DNcoeff, int DLcoeff, int Crcoeff) {
+                              int DNcoeff, int DLcoeff, int Crcoeff, 
+                              int Grcoeff) {
         if (concentration==null || concentration.length()==0)
             throw new IllegalArgumentException("concentration area name "+
                                                "cannot be null or empty");
@@ -210,6 +252,11 @@ public class MIPHandler {
                         break;  // the increment applies only once
                     }
                 }
+            }
+            // add to the ival the value of the estimated grade multiplied by
+            // the Grcoeff for the expected-GPA-max objective
+            if (ci.getEstimatedGrade()>=_params.getMinGradeThres()) {
+                ival += Grcoeff * ci.getEstimatedGrade();
             }
             prob.append(ival).append(" x_").append(i);
             if (i<N-1) prob.append(" + ");
@@ -515,14 +562,71 @@ public class MIPHandler {
                 }
             }
         }
+        // semester max #courses constraint (freshman only)
+        if (_passed.size()<_params.getMinNumCourses4Sophomore()) {
+            // ignore this value if there is a specific value in the 
+            // outputs pane
+            String cons = numCoursesPerTrm2StrMap.get(1);
+            if (cons==null || cons.length()==0) { 
+                final int maxnumcoursesperterm = 
+                    _params.getMaxNumCoursesPerTerm4Freshmen();
+                final int maxterm = 1;  // constraint only applies to the 1st 
+                                        // upcoming term
+                prob.append("\\ 7.0 term #courses freshman constraints\n");
+                for (int s=1; s<=maxterm; s++) {
+                    prob.append("c"+ccount+": "); ++ccount;
+                    for (int i=0; i<N; i++) {
+                        prob.append(" x_"+i+"_"+s);
+                        if (i<N-1) prob.append(" + ");
+                        else prob.append(" <= "+maxnumcoursesperterm+"\n");
+                    }
+                }            
+            }
+        }
         // semester max #courses constraint (student imposed)
         prob.append("\\ 7.1 term #courses student desire constraints\n");
         for (int s=1; s<=Smax; s++) {
+            // ignore this value if there is a specific value in the outputs 
+            // pane
+            String cons = numCoursesPerTrm2StrMap.get(1);
+            if (cons!=null && cons.length()>0) continue;             
             prob.append("c"+ccount+": "); ++ccount;
             for (int i=0; i<N; i++) {
                 prob.append(" x_"+i+"_"+s);
                 if (i<N-1) prob.append(" + ");
                 else prob.append(" <= "+maxNumCrsPerSem+"\n");
+            }
+        }
+        // add constraints for #courses on terms the student specified
+        Iterator<Integer> tit = numCoursesPerTrm2StrMap.keySet().iterator();
+        while (tit.hasNext()) {
+            int tno = tit.next();
+            String cons = numCoursesPerTrm2StrMap.get(tno);
+            if (cons==null || cons.length()==0) continue;
+            cons = cons.trim();
+            int numc = Integer.MIN_VALUE;
+            try {
+                numc = Integer.parseInt(cons);
+                cons = " = "+numc;
+            }
+            catch (NumberFormatException e) {
+                // no-op
+            }
+            // cannot send string as is to the constraint as strict inequalities
+            // "<" or ">" are not supported.
+            if (cons.startsWith("<") && !cons.startsWith("<=")) {
+                numc = Integer.parseInt(cons.substring(1));
+                cons = "<= " + (numc-1);
+            }
+            else if (cons.startsWith(">") && !cons.startsWith(">=")) {
+                numc = Integer.parseInt(cons.substring(1));
+                cons = ">= " + (numc+1);
+            }
+            prob.append("c"+ccount+": "); ++ccount;
+            for (int i=0; i<N; i++) {
+                prob.append(" x_"+i+"_"+tno);
+                if (i<N-1) prob.append(" + ");
+                else prob.append(" " + cons + "\n");
             }
         }
         // thesis semester max #courses constraint (student imposed):
@@ -590,7 +694,8 @@ public class MIPHandler {
             final CourseGroup cg = CourseGroup.getCourseGroupByName(groupname);
             if (cg.isConcentrationArea()) continue;  // don't do anything here
             if (cg.isCapstoneProjectGroup()) continue;  // don't do anything now
-            if (cg.isSoftOrderPrecedenceConstraint()) continue;  // same 
+            if (cg.isSoftOrderPrecedenceConstraint()) continue;  // same here
+            if (cg.isOUConstraint()) continue;  // again!
             prob.append("\\ group "+groupname+" constraints\n");
             final int cgc = cg.getMinNumCreditsReqd();
             int cgn = cg.getMinNumCoursesReqd();
@@ -674,6 +779,36 @@ public class MIPHandler {
                     }
                 }
             }
+            else {  // cgn < 0 implies constraint: x_i_1 +...+ x_j_Smax <= -cgn
+                cgn = -cgn;  // reverse sign
+                // remove from course-group every course that is already
+                // passed, and for the remaining courses, make their sum 
+                // less than or equal to the remaining cgn_{+} number.
+                Set<String> crss = new HashSet(cg.getGroupCodes());
+                Iterator<String> crss_it = crss.iterator();
+                while (crss_it.hasNext()) {
+                    String crscode = crss_it.next();
+                    if (_passed.contains(crscode)) { 
+                        crss_it.remove();
+                        --cgn; 
+                    }
+                }
+                if (cgn<0) cgn = 0;
+                if (!cg.isCoursesReqdExact() && !cg.isHoldsPerSemester() && 
+                    cgn>0) {  // constraint asks for a maximum to be respected
+                    prob.append("c"+ccount+": ");
+                    ++ccount;
+                    crss_it = crss.iterator();
+                    while (crss_it.hasNext()) {
+                        String crscode = crss_it.next();
+                        Course crs = Course.getCourseByCode(crscode);
+                        int crs_id = crs.getId();
+                        prob.append("x_"+crs_id);
+                        if (crss_it.hasNext()) prob.append(" + ");
+                        else prob.append(" <= "+cgn+"\n");
+                    }
+                }
+            }
             if (cgc>0) {
                 prob.append("c"+ccount+": ");
                 ++ccount;
@@ -720,25 +855,27 @@ public class MIPHandler {
         Iterator<String> desired_it = _desired.getDesiredCourseCodesIterator();
         while (desired_it.hasNext()) {
             String dcode = desired_it.next();
+            Course dc = Course.getCourseByCode(dcode);
+            int cid = dc.getId();
+            int curTrm = 0;
+            if (_cid2tnoMap!=null) curTrm = _cid2tnoMap.getOrDefault(cid, 0);
             Set<Integer> allowed_terms = _desired.getAllowedTerms4Course(dcode, 
+                                                                         curTrm,
                                                                          Smax);
             if (allowed_terms.size()==Smax) {  // all terms allowed
                 prob.append("c"+ccount+": ");
                 ++ccount;
-                Course dc = Course.getCourseByCode(dcode);
                 int id = dc.getId();
                 prob.append("x_"+id+" = 1\n");
             }
             else if (allowed_terms.size()==0) {  // course is "disallowed"
                 prob.append("c"+ccount+": ");
                 ++ccount;
-                Course dc = Course.getCourseByCode(dcode);
                 int id = dc.getId();
                 prob.append("x_"+id+" = 0\n");                
             } 
             else {  // to only allow course on the specified terms, disallow
                     // every term not specified, and request x_id = 1
-                final Course dc = Course.getCourseByCode(dcode);
                 final int id = dc.getId();
                 prob.append("c"+ccount+": ");
                 ++ccount;
@@ -906,6 +1043,10 @@ public class MIPHandler {
         // that would normally ask for course cj not to be taken during
         // ST if ci was taken on S1 or S2 of the same year, as it doesn't
         // appear to be significant to impose this as well.
+        // Notice that for soft-order constraints, the number cn of minimum 
+        // courses has the meaning that it is the maximum distance in terms
+        // between ci and cj, so that if student takes both courses and 
+        // takes ci in term t, they must take course cj by t + cn
         prob.append("\\ soft-order precedence constraints\n");
         gnamesit = CourseGroup.getCourseGroupNameIterator();
         while (gnamesit.hasNext()) {
@@ -913,12 +1054,17 @@ public class MIPHandler {
             CourseGroup cg = CourseGroup.getCourseGroupByName(gname);
             if (cg.isSoftOrderPrecedenceConstraint()) {
                 List<String> codes = cg.getGroupCodes();
+                final int cn = cg.getMinNumCoursesReqd();
                 Course ci = Course.getCourseByCode(codes.get(0));
                 Course cj = Course.getCourseByCode(codes.get(1));
                 for (int s=1; s<=Smax; s++) {
+                    int cn2 = cn;
+                    if (cn==0) cn2 = s;  // if cn is zero, there is no limit
+                                         // in the time-distance between the 
+                                         // two courses
                     prob.append("c"+ccount+": "); ++ccount;
                     prob.append("x_"+cj.getId()+"_"+s+" ");
-                    for (int t=0; t<=s-1; t++) {
+                    for (int t=s-cn2; t<=s-1; t++) {
                         prob.append(" - x_"+ci.getId()+"_"+t);
                     }
                     prob.append(" + x_"+ci.getId());
@@ -926,7 +1072,52 @@ public class MIPHandler {
                 }
             }
         }
-        // 2.16 sixteenth, the honor-student constraints -only for non-honor 
+        // 2.16 sixteenth, the OU constraints that ask for an upper limit of 
+        // OU courses taken every academic year (starting on a Fall term.)
+        prob.append("\\ OU max #courses per academic year constraint\n");
+        gnamesit = CourseGroup.getCourseGroupNameIterator();
+        while (gnamesit.hasNext()) {
+            String gname = gnamesit.next();
+            CourseGroup cg = CourseGroup.getCourseGroupByName(gname);
+            if (cg.isOUConstraint()) {
+                List<String> codes = cg.getGroupCodes();
+                int cnmax = cg.getMinNumCoursesReqd();  // this is a max value
+                for (int s=1; s<=Smax; s++) {
+                    if (Course.isFallTerm(s)) {
+                        // for the min(s+4,Smax) terms, OU courses must be 
+                        // no more than cnmax
+                        int s_up_to = Math.min(s+4, Smax);
+                        prob.append("c"+ccount+": "); ++ccount;
+                        for (int s2 = s; s2<=s_up_to; s2++) {
+                            for (int j=0; j<codes.size(); j++) {
+                                Course c = Course.getCourseByCode(codes.get(j));
+                                int cid = c.getId();
+                                prob.append("x_"+cid+"_"+s2+" ");
+                                if (j<codes.size()-1 || s2<s_up_to)
+                                    prob.append(" + ");
+                            }
+                        }
+                        prob.append(" <= "+cnmax+"\n");
+                    }
+                    else if (s==1) {  // constraints for current academic year
+                        int cnmax2 = cnmax - num_OU_cur_academic_year;
+                        int s_next_ST = Course.nextFallTerm(s)-1;
+                        prob.append("c"+ccount+": "); ++ccount;
+                        for (int s2 = s; s2<=s_next_ST; s2++) {
+                            for (int j=0; j<codes.size(); j++) {
+                                Course c = Course.getCourseByCode(codes.get(j));
+                                int cid = c.getId();
+                                prob.append("x_"+cid+"_"+s2+" ");
+                                if (j<codes.size()-1 || s2<s_next_ST)
+                                    prob.append(" + ");
+                            }
+                        }
+                        prob.append(" <= "+cnmax2+"\n");                        
+                    }
+                }
+            }
+        }        
+        // 2.17 seventeenth, the honor-student constraints -only for non-honor 
         //      students
         if (!isHonorStudent) {
             CourseGroup honor_cg = 
@@ -943,7 +1134,7 @@ public class MIPHandler {
                 }
             }
         }
-        // 2.17 seventeenth, the variable constraints
+        // 2.18 eightteenth, the variable constraints
         prob.append("Binary\n");
         for (int i=0; i<N; i++) {
             prob.append("x_"+i+" ");
@@ -952,8 +1143,8 @@ public class MIPHandler {
             }
             prob.append("\n");
         }
-        // variable "D" can be continuous, so it's not declared at all
-        // 2.18 finally, the END delimiter of all LP files
+        // variable "Dx" and "G" can be continuous, so it's not declared at all
+        // 2.19 finally, the END delimiter of all LP files
         prob.append("\nEnd");
         
         // 3. write the problem as an LP format file called "schedule.lp".
@@ -974,8 +1165,8 @@ public class MIPHandler {
      * String to be displayed in the output area. Variable values get written
      * in file "schedule_result_vars.out".
      * @return String
-     * @throws GRBException
-     * @throws IOException
+     * @throws GRBException if GUROBI fails to solve the problem
+     * @throws IOException if some I/O error occurs
      */
     public String optimizeSchedule() throws GRBException, IOException {
         _cid2tnoMap.clear();
@@ -997,6 +1188,17 @@ public class MIPHandler {
         sb.append(dstr);
         PrintWriter pwr = 
                 new PrintWriter(new FileWriter("schedule_result_vars.out"));
+        // get the names of all variables of the form "x_i" that are set to 1
+        Set<Integer> all_sol_varids = new HashSet<>();
+        for (GRBVar v : model.getVars()) {
+            String vname = v.get(GRB.StringAttr.VarName);
+            int vval = (int) v.get(GRB.DoubleAttr.X);
+            if (vval==1) {
+                String[] xcomps = vname.split("_");
+                if (xcomps.length==2 && vname.startsWith("x")) 
+                    all_sol_varids.add(Integer.parseInt(xcomps[1]));
+            }
+        }
         for (GRBVar v : model.getVars()) {
             String vname = v.get(GRB.StringAttr.VarName);
             int vval = (int) v.get(GRB.DoubleAttr.X);
@@ -1014,7 +1216,11 @@ public class MIPHandler {
                 else num_credits_taken += cv.getCredits();
                 total_credits += cv.getCredits();
                 String course_descr = cv.getScheduleDisplayName();
-                if (course_descr==null || course_descr.length()<=1) 
+                if (course_descr==null || course_descr.length()<=1 ||
+                    _desired.contains(cv.getCode()) || 
+                    cv.isRequired4Desired(_desired, all_sol_varids))  
+                    // if user selected course or if course is needed for such
+                    // course, show it with full name in schedule
                     course_descr = cv.toString();
                 // String term_desc = Course.getTermNameByTermNo(termno);
                 //sb.append(term_desc).append(course_descr).append("\n");
@@ -1029,8 +1235,8 @@ public class MIPHandler {
         pwr.flush();
         pwr.close();
         final int Smax = _params.getSmax();
-        sb.append("\n----- Credits Taken So Far\t\t: "+num_credits_taken);
-        sb.append("\n----- Credits To Take Yet\t\t: "+num_credits_to_take);
+        sb.append("\n----- Credits Taken So Far\t: "+num_credits_taken);
+        sb.append("\n----- Credits To Take Yet\t: "+num_credits_to_take);
         sb.append("\n----- TOTAL CREDITS OVERALL\t: "+total_credits+"\n");
         for (int s=1; s<=Smax; s++) {
             List<String> crs_lst = sem_courses_map.get(s);

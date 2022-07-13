@@ -61,22 +61,30 @@
                           <Group type="103" groupAlignment="0" attributes="0">
                               <Component id="_synonymsFld" max="32767" attributes="0"/>
                               <Component id="_titleFld" alignment="0" max="32767" attributes="0"/>
-                              <Component id="_prereqsFld" alignment="0" max="32767" attributes="0"/>
                               <Component id="_coreqsFld" alignment="0" max="32767" attributes="0"/>
                               <Component id="_displayNameFld" alignment="0" max="32767" attributes="0"/>
                               <Component id="_termsOfferedFld" alignment="0" max="32767" attributes="0"/>
+                              <Component id="_prereqsFld" alignment="0" max="32767" attributes="0"/>
                               <Group type="102" attributes="0">
-                                  <Group type="103" groupAlignment="0" attributes="0">
-                                      <Group type="103" groupAlignment="1" max="-2" attributes="0">
-                                          <Component id="_diffLvlFld" alignment="0" max="32767" attributes="0"/>
-                                          <Component id="_creditsFld" alignment="0" pref="30" max="32767" attributes="0"/>
-                                      </Group>
+                                  <Group type="103" groupAlignment="0" max="-2" attributes="0">
                                       <Group type="102" attributes="0">
+                                          <Group type="103" groupAlignment="1" max="-2" attributes="0">
+                                              <Component id="_diffLvlFld" alignment="0" max="32767" attributes="0"/>
+                                              <Component id="_creditsFld" alignment="0" pref="30" max="32767" attributes="0"/>
+                                          </Group>
+                                          <EmptySpace max="32767" attributes="0"/>
+                                          <Component id="_showAllPrereqsBtn" min="-2" max="-2" attributes="0"/>
+                                      </Group>
+                                      <Component id="_idLbl" alignment="0" min="-2" pref="40" max="-2" attributes="0"/>
+                                      <Group type="102" alignment="0" attributes="0">
                                           <Component id="_codeFld" min="-2" pref="100" max="-2" attributes="0"/>
                                           <EmptySpace max="-2" attributes="0"/>
                                           <Component id="_searchBtn" min="-2" pref="73" max="-2" attributes="0"/>
+                                          <EmptySpace type="separate" max="-2" attributes="0"/>
+                                          <Component id="jLabel11" min="-2" max="-2" attributes="0"/>
+                                          <EmptySpace max="-2" attributes="0"/>
+                                          <Component id="_findAllDescendantsBtn" min="-2" pref="73" max="-2" attributes="0"/>
                                       </Group>
-                                      <Component id="_idLbl" alignment="0" min="-2" pref="40" max="-2" attributes="0"/>
                                   </Group>
                                   <EmptySpace min="0" pref="0" max="32767" attributes="0"/>
                               </Group>
@@ -89,7 +97,7 @@
                           </Group>
                           <EmptySpace type="separate" max="-2" attributes="0"/>
                           <Component id="_saveCrsBtn" min="-2" max="-2" attributes="0"/>
-                          <EmptySpace pref="71" max="32767" attributes="0"/>
+                          <EmptySpace max="32767" attributes="0"/>
                           <Component id="_saveAllCrssBtn" min="-2" max="-2" attributes="0"/>
                           <EmptySpace type="separate" max="-2" attributes="0"/>
                           <Group type="103" groupAlignment="0" max="-2" attributes="0">
@@ -114,6 +122,8 @@
                       <Component id="jLabel2" alignment="3" min="-2" max="-2" attributes="0"/>
                       <Component id="_codeFld" alignment="3" min="-2" max="-2" attributes="0"/>
                       <Component id="_searchBtn" alignment="3" min="-2" max="-2" attributes="0"/>
+                      <Component id="jLabel11" alignment="3" min="-2" max="-2" attributes="0"/>
+                      <Component id="_findAllDescendantsBtn" alignment="3" min="-2" max="-2" attributes="0"/>
                   </Group>
                   <EmptySpace max="-2" attributes="0"/>
                   <Group type="103" groupAlignment="3" attributes="0">
@@ -134,6 +144,7 @@
                   <Group type="103" groupAlignment="3" attributes="0">
                       <Component id="jLabel6" alignment="3" min="-2" max="-2" attributes="0"/>
                       <Component id="_diffLvlFld" alignment="3" min="-2" max="-2" attributes="0"/>
+                      <Component id="_showAllPrereqsBtn" alignment="3" min="-2" max="-2" attributes="0"/>
                   </Group>
                   <EmptySpace max="-2" attributes="0"/>
                   <Group type="103" groupAlignment="3" attributes="0">
@@ -155,7 +166,7 @@
                       <Component id="jLabel10" alignment="3" min="-2" max="-2" attributes="0"/>
                       <Component id="_termsOfferedFld" alignment="3" min="-2" max="-2" attributes="0"/>
                   </Group>
-                  <EmptySpace pref="39" max="32767" attributes="0"/>
+                  <EmptySpace pref="36" max="32767" attributes="0"/>
                   <Group type="103" groupAlignment="3" attributes="0">
                       <Component id="_previousCrsBtn" alignment="3" min="-2" max="-2" attributes="0"/>
                       <Component id="_nextCrsBtn" alignment="3" min="-2" max="-2" attributes="0"/>
@@ -329,6 +340,27 @@
           <Properties>
             <Property name="text" type="java.lang.String" value="---"/>
           </Properties>
+        </Component>
+        <Component class="javax.swing.JLabel" name="jLabel11">
+          <Properties>
+            <Property name="text" type="java.lang.String" value="Show All Courses Having this as Pre-req:"/>
+          </Properties>
+        </Component>
+        <Component class="javax.swing.JButton" name="_findAllDescendantsBtn">
+          <Properties>
+            <Property name="text" type="java.lang.String" value="Show"/>
+          </Properties>
+          <Events>
+            <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="_findAllDescendantsBtnActionPerformed"/>
+          </Events>
+        </Component>
+        <Component class="javax.swing.JButton" name="_showAllPrereqsBtn">
+          <Properties>
+            <Property name="text" type="java.lang.String" value="Show All Prereqs"/>
+          </Properties>
+          <Events>
+            <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="_showAllPrereqsBtnActionPerformed"/>
+          </Events>
         </Component>
       </SubComponents>
     </Container>

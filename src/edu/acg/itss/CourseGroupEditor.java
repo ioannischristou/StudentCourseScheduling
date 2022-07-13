@@ -51,7 +51,8 @@ public class CourseGroupEditor extends javax.swing.JFrame {
         File[] cur_files = cur_dir.listFiles();        
         for (File f : cur_files) {
             if (f.isFile() && f.getName().endsWith("grp")) {
-                CourseGroup g = CourseGroup.readCourseGroup(f.getName());
+                CourseGroup g = 
+                        CourseGroup.readCourseGroup(f.getAbsolutePath());
                 _name2filenameMap.put(g.getGroupName(), f.getAbsolutePath());
             }
         }
@@ -101,6 +102,7 @@ public class CourseGroupEditor extends javax.swing.JFrame {
         _concAreaChkBox = new javax.swing.JCheckBox();
         _isCapstoneChkBox = new javax.swing.JCheckBox();
         _softOrderChkBox = new javax.swing.JCheckBox();
+        _OUChkBox = new javax.swing.JCheckBox();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
@@ -157,6 +159,7 @@ public class CourseGroupEditor extends javax.swing.JFrame {
         jLabel5.setText("#Courses Constraint Value:");
 
         _numCoursesFld.setText("0");
+        _numCoursesFld.setToolTipText("when #Courses... check-boxes are NOT ticked, negative value indicates inequality must reverse sign (<=) in constraint");
 
         _numCoursesPerTermChkBox.setText("#Courses Constraint Value Applies Per TERM");
         _numCoursesPerTermChkBox.addActionListener(new java.awt.event.ActionListener() {
@@ -220,6 +223,9 @@ public class CourseGroupEditor extends javax.swing.JFrame {
         _softOrderChkBox.setText("Soft Order Prec. Constraint");
         _softOrderChkBox.setEnabled(false);
 
+        _OUChkBox.setText("OU Constraint");
+        _OUChkBox.setEnabled(false);
+
         javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
         jPanel1.setLayout(jPanel1Layout);
         jPanel1Layout.setHorizontalGroup(
@@ -245,7 +251,7 @@ public class CourseGroupEditor extends javax.swing.JFrame {
                         .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                             .addComponent(_courseTitleFld, javax.swing.GroupLayout.Alignment.LEADING)
                             .addGroup(jPanel1Layout.createSequentialGroup()
-                                .addGap(0, 565, Short.MAX_VALUE)
+                                .addGap(0, 600, Short.MAX_VALUE)
                                 .addComponent(_addCourseBtn)))
                         .addContainerGap())))
             .addGroup(jPanel1Layout.createSequentialGroup()
@@ -265,29 +271,28 @@ public class CourseGroupEditor extends javax.swing.JFrame {
                                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                                         .addComponent(_newGroupNameFld))
                                     .addComponent(jScrollPane2)))
+                            .addComponent(_numCoursesPerTermChkBox)
                             .addGroup(jPanel1Layout.createSequentialGroup()
-                                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                    .addComponent(_numCoursesPerTermChkBox)
+                                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
                                     .addGroup(jPanel1Layout.createSequentialGroup()
-                                        .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
-                                            .addGroup(jPanel1Layout.createSequentialGroup()
-                                                .addComponent(_isExactChkBox)
-                                                .addGap(18, 18, 18)
-                                                .addComponent(jLabel5))
-                                            .addComponent(jLabel6))
-                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                        .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                                            .addComponent(_numCoursesFld)
-                                            .addComponent(_minCreditsFld, javax.swing.GroupLayout.DEFAULT_SIZE, 70, Short.MAX_VALUE)))
-                                    .addGroup(jPanel1Layout.createSequentialGroup()
-                                        .addComponent(_honorStudentChkBox)
-                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                        .addComponent(_concAreaChkBox)
+                                        .addComponent(_isExactChkBox)
                                         .addGap(18, 18, 18)
-                                        .addComponent(_isCapstoneChkBox)
-                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                        .addComponent(_softOrderChkBox)))
-                                .addGap(0, 0, Short.MAX_VALUE)))
+                                        .addComponent(jLabel5))
+                                    .addComponent(jLabel6))
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                                    .addComponent(_numCoursesFld)
+                                    .addComponent(_minCreditsFld, javax.swing.GroupLayout.DEFAULT_SIZE, 70, Short.MAX_VALUE)))
+                            .addGroup(jPanel1Layout.createSequentialGroup()
+                                .addComponent(_honorStudentChkBox)
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                .addComponent(_concAreaChkBox)
+                                .addGap(18, 18, 18)
+                                .addComponent(_isCapstoneChkBox)
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                .addComponent(_softOrderChkBox)
+                                .addGap(18, 18, 18)
+                                .addComponent(_OUChkBox)))
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                         .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
                             .addComponent(_newGroupBtn, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
@@ -333,7 +338,8 @@ public class CourseGroupEditor extends javax.swing.JFrame {
                     .addComponent(_honorStudentChkBox)
                     .addComponent(_concAreaChkBox)
                     .addComponent(_isCapstoneChkBox)
-                    .addComponent(_softOrderChkBox))
+                    .addComponent(_softOrderChkBox)
+                    .addComponent(_OUChkBox))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(_isExactChkBox)
@@ -389,6 +395,8 @@ public class CourseGroupEditor extends javax.swing.JFrame {
         this._softOrderChkBox.setSelected(softorder);
         boolean isexact = g.isCoursesReqdExact();
         this._isExactChkBox.setSelected(isexact);
+        boolean isOU = g.isOUConstraint();
+        this._OUChkBox.setSelected(isOU);
         int num = g.getMinNumCoursesReqd();
         this._numCoursesFld.setText(Integer.toString(num));
         boolean numcoursesismax = g.isHoldsPerSemester();
@@ -497,6 +505,7 @@ public class CourseGroupEditor extends javax.swing.JFrame {
         this._isCapstoneChkBox.setSelected(false);
         this._softOrderChkBox.setSelected(false);
         this._isExactChkBox.setSelected(false);
+        this._OUChkBox.setSelected(false);
         this._numCoursesFld.setText("0");
         this._numCoursesPerTermChkBox.setSelected(false);
         this._minCreditsFld.setText("0");
@@ -522,6 +531,7 @@ public class CourseGroupEditor extends javax.swing.JFrame {
         this._concAreaChkBox.setSelected(false);
         this._isCapstoneChkBox.setSelected(cg.isCapstoneProjectGroup());
         this._softOrderChkBox.setSelected(cg.isSoftOrderPrecedenceConstraint());
+        this._OUChkBox.setSelected(cg.isOUConstraint());
         this._isExactChkBox.setSelected(false);
         this._numCoursesFld.setText("0");
         this._numCoursesPerTermChkBox.setSelected(false);
@@ -658,6 +668,7 @@ public class CourseGroupEditor extends javax.swing.JFrame {
     }
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
+    private javax.swing.JCheckBox _OUChkBox;
     private javax.swing.JButton _addCourseBtn;
     private javax.swing.JCheckBox _concAreaChkBox;
     private javax.swing.JTextField _courseCodeFld;

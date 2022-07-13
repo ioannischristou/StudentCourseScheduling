@@ -17,14 +17,23 @@ import java.io.*;
  * "exactly this much". If the equals sign "=" is preceded by the "&lt;" char,
  * then the constraint is interpreted as taking place only during any particular
  * semester (term). For example, the value "&lt;=1" means that only up to 1 
- * course of all the courses in the group can be taken in the same semester.
+ * course of all the courses in the group can be taken in the same semester. And
+ * if the value is a negative number (eg "-1"), the constraint is interpreted as
+ * "at most this much", taking into consideration courses already passed, so 
+ * that if the constraint is that from the set {ITC0001, ITC0002, ITC0003} up to
+ * 1 class must be taken, and ITC0001 and ITC0003 are already taken, there is no
+ * constraint produced to be written in the schedule. For this to occur, there 
+ * must be no preceding "&lt;" or "=" sign in the value.
  * <p>Course groups can also model soft-order precedence constraints: a soft-
  * order precedence constraint is a constraint between 2 courses ci and cj, and 
  * asks that if both courses are to be taken, then ci must be taken before 
  * course cj. A soft order precedence constraint has name starting with 
  * "softorder". In such a course-group, the order in which the two courses are 
  * specified matters: it specifies the soft-order between them (first comes the
- * "soft pre-requisite" course).
+ * "soft pre-requisite" course). For soft-order constraints, the number for the
+ * minimum number of courses represents the maximum distance in time (terms) 
+ * that the courses must be taken (unless the number is zero, in which case it
+ * is ignored).
  * <p>Finally, it models capstone project course constraints, which ask for a 
  * minimum number of credits before taking the capstone, and optionally, for a 
  * number of courses from their concentration area as well. Capstone project 
@@ -59,7 +68,10 @@ public class CourseGroup {
      * required). If this CourseGroup object is a Capstone project group, the 
      * number represents the minimum number of courses required from the 
      * student's chosen concentration area, before taking the single course in 
-     * this group.
+     * this group. If this object is a soft-order constraint, the number 
+     * represents the maximum term separation distance between the two courses,
+     * assuming they are both to be scheduled (unless the number is zero, in 
+     * which case the value is ignored)
      */
     private final int _minNumCoursesReq;
     /**
@@ -124,7 +136,10 @@ public class CourseGroup {
      * value for the sum of the variables corresponding to the courses described
      * in the 2nd line of the file, holding on a PER-SEMESTER basis (essentially
      * indicating that no more than a maximum number from the courses described 
-     * in the second line can be taken together in the same semester).
+     * in the second line can be taken together in the same semester). If the
+     * number is negative, the constraint is interpreted as an "at most this 
+     * much" constraint, taking into account passed courses. For more, read the
+     * overall class documentation.
      * The file may also contain any lines AFTER the first two lines that start 
      * with "#" that designate comments (they are never read).
      * @param filename String
@@ -269,6 +284,18 @@ public class CourseGroup {
      */
     public final boolean isCapstoneProjectGroup() {
         return _groupName.startsWith("capstone");
+    }
+    
+    
+    /**
+     * checks if this given group represents the OU-constraint that asks for 
+     * an upper limit on the number of OU courses taken every academic year (ie
+     * from any Fall to the next SummerTerm). 
+     * @return boolean true iff this object's group name starts with the prefix
+     * "OU".
+     */
+    public final boolean isOUConstraint() {
+        return _groupName.startsWith("OU");
     }
     
     

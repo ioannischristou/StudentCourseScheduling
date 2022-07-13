@@ -100,9 +100,36 @@ public class ScheduleParams {
     }
     
     
+    /**
+     * return the thesis code of the program.
+     * @return String such as "ITC4979" or "ITC4949" (for the CYN program)
+     */
     public String getThesisCode() {
         return _props.getProperty("ThesisCourseCode");
     }
+    
+    
+    /**
+     * return the maximum number of courses a freshman is allowed to take for
+     * any given term. A freshman is someone with less than 
+     * <CODE>getMinNumCourses4Sophomore()</CODE> courses taken.
+     * @return int
+     */
+    public int getMaxNumCoursesPerTerm4Freshmen() {
+        return Integer.parseInt(_props.
+                                  getProperty("FreshmanMaxNumCoursesPerTerm"));
+    }
+    
+    
+    /**
+     * return the minimum number of courses that a student must have taken to 
+     * be considered a sophomore or more senior.
+     * @return int
+     */
+    public int getMinNumCourses4Sophomore() {
+        return Integer.parseInt(_props.getProperty("MinNumCourses4Sophomore"));
+    }
+    
     
     /**
      * return the set of program codes (eg "ITC", "MA" etc) whose number of 
@@ -147,6 +174,18 @@ public class ScheduleParams {
      */
     public String getCourseCSVFileHeader() {
         return _props.getProperty("CourseCSVFileHeader");
+    }
+    
+    
+    /**
+     * return the value of the minimum estimated grade threshold required for 
+     * a course to get a non-zero value regarding expected GPA maximization. If
+     * the value is not found in the properties file, the default returned is 
+     * 3.0.
+     * @return float
+     */
+    public float getMinGradeThres() {
+        return Float.parseFloat(_props.getProperty("MinGradeThres", "3.0"));
     }
     
     

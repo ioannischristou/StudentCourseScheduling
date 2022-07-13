@@ -10,13 +10,18 @@ import javax.swing.JOptionPane;
 
 
 /**
- * class is responsible for maintaining all relevant course data.
+ * class is responsible for maintaining all relevant course data. Estimated 
+ * grades for individual students (from QARMA) may be recorded in a file called
+ * "estimated_grades.txt" whose lines are comma separated 
+ * &lt;course-code&gt;,&lt;estimated-value&gt;
+ * pairs of the estimates on how the student will do on some (usually not all) 
+ * courses (one course per line).
  * The <CODE>CourseEditor</CODE> class provides the GUI for editing (adding,
  * modifying and/or deleting) courses in the appropriate "cls.csv" file where 
  * courses are stored.
  * @author itc
  */
-public class Course {
+public class Course implements Comparable {
     /**
      * needed to retrieve a Course based on its code. Iterators return keys 
      * sorted in alphabetical order.
@@ -88,6 +93,14 @@ public class Course {
      * the range [0,10] (10=MAX_DIFFICULTY).
      */
     private final int _difficultyLevel;
+    
+    /**
+     * optional estimated grade from the results of QARMA is a float in [0,4.0].
+     * For this field only, <CODE>setEstimatedGrade(value)</CODE> setter method
+     * exists.
+     */
+    private float _estimatedGrade = 0.0f;
+    
     
     /**
      * class constructor is private, and main way to create <CODE>Course</CODE> 
@@ -561,7 +574,11 @@ public class Course {
      * @return List&lt;Integer&gt;
      */
     public final List<Integer> getTermsOffered(int Smax) {
-        if (_termsOffered!=null) return _termsOffered;
+        //if (_termsOffered!=null) return _termsOffered;
+        // the line above cannot work correctly when CurrentDate is modified
+        // from the GUI right before hitting "Run", as the change in date will
+        // not affect at all the numeric terms that the course is offered.
+        // For this reason, we cannot have a cache for the termsOffered.
         _termsOffered = new ArrayList<>();
         String tot = _toff.trim();  // termsOffered cannot be null
         if (!"-".equals(tot)) { 
@@ -602,7 +619,7 @@ public class Course {
                 }
                 else {  // to must be like "FA2020"
                     int t = Course.getTermNo(to);
-                    _termsOffered.add(t);
+                    if (t>0) _termsOffered.add(t);
                 }
             }
         }  // termsOffered
@@ -622,18 +639,145 @@ public class Course {
     
     /**
      * get the difficulty level of this Course (to be used in min-max assignment
-     * criteria for courses in any term.
+     * criteria for courses in any term).
      * @return int
      */
     public final int getDifficultyLevel() {
         return _difficultyLevel;
+    }
+    
+    
+    /**
+     * get the estimated grade of a particular student for this Course. This 
+     * number is read from the file "estimated_grades.txt" when it exists.
+     * @return float number in [0,4] eg 3.5.
+     */
+    public final float getEstimatedGrade() {
+        return _estimatedGrade;
+    }
+    
+    
+    /**
+     * set the estimated grade of a particular student for this Course. This 
+     * number is read from the file "estimated_grades.txt" when it exists.
+     * @param v float number in [0,4] eg 3.5.
+     */
+    public final void setEstimatedGrade(float v) {
+        if (v<0 || v>4.0f) 
+            throw new IllegalArgumentException("float value must be in [0,4]");
+        _estimatedGrade = v;
+    }
+    
+    
+    /**
+     * check if the course with given code is required for this Course (if it is
+     * an "ancestor", prerequisite-wise, even if it is only inside a disjunction
+     * of possible courses to take.) Takes co-reqs into account too.
+     * @param code String such as "ITC3234"
+     * @return boolean true iff the course with the code passed in as argument
+     * is a direct prerequisite for this course, or if it is a requirement for
+     * another course that is eventually required by this course.
+     */
+    public final boolean requiresCourse(String code) {
+        for (Set<String> ss : _prereqs) {
+            if (ss.contains(code)) return true;
+            // else
+            for (String s : ss) {
+                Course cs = Course.getCourseByCode(s);
+                if (cs.requiresCourse(code)) return true;
+            }
+        }
+        // handle co-requisites also!
+        for (String ss : _coreqs) {
+            if (code.equals(ss)) return true;
+            // else
+            Course cs = Course.getCourseByCode(ss);
+            if (cs.requiresCourse(code)) return true;
+        }
+        return false;
+    }
+    
+    
+    /**
+     * checks if code is required so that this course is in the solution, taking
+     * into account the actual solution plan. The requirement here is taken in 
+     * the strict sense, so for example if this course is ITC2205 whose 
+     * prerequisites are ITC2088 AND (ITC2197 OR ITC3234), then ITC2088 always
+     * returns true (in any schedule), but ITC2197 will return true only if 
+     * ITC3234 is missing from the schedule, and false otherwise, and vice-versa
+     * for ITC3234.
+     * @param code String such as "ITC3160"
+     * @param solVarIds Set&lt;Integer&gt; containing the ids of the courses in
+     * the current solution
+     * @return boolean true iff code is actually required for this course to be
+     * in the solution
+     */
+    private final boolean scheduleRequiresCourse(String code, 
+                                                 Set<Integer> solVarIds) {
+        // include co-requisites
+        Set<Set<String>> allreqs = new HashSet<>(_prereqs);
+        for (String cr : _coreqs) {
+            HashSet<String> crset = new HashSet<>();
+            crset.add(cr);
+            allreqs.add(crset);
+        }
+        for (Set<String> ss : allreqs) {
+            if (ss.contains(code)) {
+                // make sure ss is either just 1 course, or the other courses
+                // in ss are not in solution
+                if (ss.size()==1) return true;
+                boolean needed = true;
+                for (String s : ss) {
+                    if (s.equals(code)) continue;
+                    Course cs = Course.getCourseByCode(s);
+                    if (solVarIds.contains(cs.getId())) {
+                        needed = false;
+                        break;
+                    }
+                }
+                if (needed) return true;
+            }
+            // we can't say yet that code is required
+            // check if every course in ss requires code:
+            // if so, code is needed
+            int num_needing = 0;
+            for (String s : ss) {
+                Course cs = Course.getCourseByCode(s);
+                if (cs.scheduleRequiresCourse(code, solVarIds)) ++num_needing;
+            }
+            if (num_needing==ss.size()) return true;
+        }
+        return false;        
+    }
+    
+    
+    /**
+     * checks if this course is actually required (in the strict sense according
+     * to the current solution) by any of the desired courses selected by the 
+     * student.
+     * @param desired DesiredCourses
+     * @param solVarIds Set&lt;Integer&gt; the ids of the courses in the current
+     * solution
+     * @return boolean true if this course is needed by any of the desired 
+     * courses in the solution
+     */
+    public final boolean isRequired4Desired(DesiredCourses desired, 
+                                          Set<Integer> solVarIds) {
+        Iterator<String> dcodesit = desired.getDesiredCourseCodesIterator();
+        while (dcodesit.hasNext()) {
+            String dcode = dcodesit.next();
+            Course d = Course.getCourseByCode(dcode);
+            if (!solVarIds.contains(d.getId())) continue;  // d is undesired
+            if (d.scheduleRequiresCourse(getCode(), solVarIds)) return true;
+        }
+        return false;
     }
         
     
     /**
      * return a string of the following format:
      * &lt;code&gt; [(aka [code ]*)] &lt;name&gt;
-     * @return 
+     * @return String
      */
     @Override
     public String toString() { 
@@ -714,6 +858,46 @@ public class Course {
         return sb.toString();
     }
     
+
+    /**
+     * overrides the <CODE>equals()</CODE> method.
+     * @param other Object must be a Course object.
+     * @return boolean true iff the two Course objects have the same id
+     */
+    public boolean equals(Object other) {
+        if (!(other instanceof Course)) return false;
+        Course o = (Course) other;
+        return _id == o._id;
+    }
+    
+    
+    /**
+     * Joshua Bloch's recommended method for computing effective hash-codes.
+     * In this implementation we're only using the <CODE>_id</CODE> field, as 
+     * it's the only one used in the <CODE>equals()</CODE> method too.
+     * @return int
+     */
+    public int hashCode() {
+        int result = 17;
+	int c = (int)(_id ^ (_id >>> 32));
+	result = 31*result + c;
+        return result;     
+    }
+    
+    
+    /**
+     * compares courses according to their code (alphabetical order).
+     * @param other Object must be a <CODE>Course</CODE> object
+     * @return int the result of the comparison of the two objects' codes.
+     */
+    public int compareTo(Object other) {
+        if (other instanceof Course) {
+            Course o = (Course) other;
+            return _code.compareTo(o.getCode());
+        }
+        throw new IllegalArgumentException("argument not a Course object");
+    }
+
     
     /**
      * return an int representing the term (semester) from now that the course
@@ -777,12 +961,16 @@ public class Course {
     
     
     /**
-     * check whether a given term in the range [1, ..., Smax] is a summer term
+     * check whether a given term in the range [0, ..., Smax] is a summer term
      * (ST). Notice that Summer Term is not the same as Summer1 or Summer2.
      * @param termno int
      * @return boolean true iff termno corresponds to ST
+     * @throws IllegalArgumentException if termno &lt; 0
      */
     public static boolean isSummerTerm(int termno) {
+        if (termno < 0)
+            throw new IllegalArgumentException("termno="+termno+
+                                               " must be non-negative...");
         // 1. get the current date
         int cur_day = CurrentDate._curDay;
         int cur_mon = CurrentDate._curMonth;
@@ -806,6 +994,36 @@ public class Course {
         if (termno + cur_term < 4) return false;
         // I want cur_term + termno = 5k + 4, k=0, 1, 2, ...
         return (cur_term+termno-4) % 5 == 0;
+    }
+    
+    
+    /**
+     * check whether a given term in the range [1, ..., Smax] is a fall term
+     * (FA).
+     * @param termno int
+     * @return boolean true iff termno corresponds to FA
+     * @throws IllegalArgumentException if termno &le; 0
+     */
+    public static boolean isFallTerm(int termno) {
+        return isSummerTerm(termno-1);
+    }
+    
+    
+    /**
+     * return the first fall (FA) term after termno.
+     * @param termno int
+     * @return int
+     * @throws IllegalArgumentException if termno &lt; 0
+     */
+    public static int nextFallTerm(int termno) {
+        if (termno < 0)
+            throw new IllegalArgumentException("termno="+termno+
+                                               " must be non-negative...");
+        int s = termno+1;
+        while(true) {
+            if (Course.isFallTerm(s)) return s;
+            else ++s;
+        }
     }
     
     

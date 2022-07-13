@@ -158,6 +158,9 @@ public class CourseEditor extends javax.swing.JFrame {
         _previousCrsBtn = new javax.swing.JButton();
         _nextCrsBtn = new javax.swing.JButton();
         _idLbl = new javax.swing.JLabel();
+        jLabel11 = new javax.swing.JLabel();
+        _findAllDescendantsBtn = new javax.swing.JButton();
+        _showAllPrereqsBtn = new javax.swing.JButton();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
@@ -255,6 +258,22 @@ public class CourseEditor extends javax.swing.JFrame {
 
         _idLbl.setText("---");
 
+        jLabel11.setText("Show All Courses Having this as Pre-req:");
+
+        _findAllDescendantsBtn.setText("Show");
+        _findAllDescendantsBtn.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                _findAllDescendantsBtnActionPerformed(evt);
+            }
+        });
+
+        _showAllPrereqsBtn.setText("Show All Prereqs");
+        _showAllPrereqsBtn.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                _showAllPrereqsBtnActionPerformed(evt);
+            }
+        });
+
         javax.swing.GroupLayout _mainPanelLayout = new javax.swing.GroupLayout(_mainPanel);
         _mainPanel.setLayout(_mainPanelLayout);
         _mainPanelLayout.setHorizontalGroup(
@@ -278,20 +297,27 @@ public class CourseEditor extends javax.swing.JFrame {
                         .addGroup(_mainPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                             .addComponent(_synonymsFld)
                             .addComponent(_titleFld)
-                            .addComponent(_prereqsFld)
                             .addComponent(_coreqsFld)
                             .addComponent(_displayNameFld)
                             .addComponent(_termsOfferedFld)
+                            .addComponent(_prereqsFld)
                             .addGroup(_mainPanelLayout.createSequentialGroup()
-                                .addGroup(_mainPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                    .addGroup(_mainPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
-                                        .addComponent(_diffLvlFld, javax.swing.GroupLayout.Alignment.LEADING)
-                                        .addComponent(_creditsFld, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, 30, Short.MAX_VALUE))
+                                .addGroup(_mainPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                                    .addGroup(_mainPanelLayout.createSequentialGroup()
+                                        .addGroup(_mainPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
+                                            .addComponent(_diffLvlFld, javax.swing.GroupLayout.Alignment.LEADING)
+                                            .addComponent(_creditsFld, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, 30, Short.MAX_VALUE))
+                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                        .addComponent(_showAllPrereqsBtn))
+                                    .addComponent(_idLbl, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
                                     .addGroup(_mainPanelLayout.createSequentialGroup()
                                         .addComponent(_codeFld, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
                                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                        .addComponent(_searchBtn, javax.swing.GroupLayout.PREFERRED_SIZE, 73, javax.swing.GroupLayout.PREFERRED_SIZE))
-                                    .addComponent(_idLbl, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                        .addComponent(_searchBtn, javax.swing.GroupLayout.PREFERRED_SIZE, 73, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                        .addGap(18, 18, 18)
+                                        .addComponent(jLabel11)
+                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                        .addComponent(_findAllDescendantsBtn, javax.swing.GroupLayout.PREFERRED_SIZE, 73, javax.swing.GroupLayout.PREFERRED_SIZE)))
                                 .addGap(0, 0, Short.MAX_VALUE))))
                     .addGroup(_mainPanelLayout.createSequentialGroup()
                         .addGroup(_mainPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
@@ -299,7 +325,7 @@ public class CourseEditor extends javax.swing.JFrame {
                             .addComponent(_deleteCrsBtn, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
                         .addGap(18, 18, 18)
                         .addComponent(_saveCrsBtn)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 71, Short.MAX_VALUE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                         .addComponent(_saveAllCrssBtn)
                         .addGap(18, 18, 18)
                         .addGroup(_mainPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
@@ -317,7 +343,9 @@ public class CourseEditor extends javax.swing.JFrame {
                 .addGroup(_mainPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jLabel2)
                     .addComponent(_codeFld, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(_searchBtn))
+                    .addComponent(_searchBtn)
+                    .addComponent(jLabel11)
+                    .addComponent(_findAllDescendantsBtn))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(_mainPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jLabel3)
@@ -333,7 +361,8 @@ public class CourseEditor extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(_mainPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jLabel6)
-                    .addComponent(_diffLvlFld, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(_diffLvlFld, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(_showAllPrereqsBtn))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(_mainPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jLabel7)
@@ -350,7 +379,7 @@ public class CourseEditor extends javax.swing.JFrame {
                 .addGroup(_mainPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jLabel10)
                     .addComponent(_termsOfferedFld, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 39, Short.MAX_VALUE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 36, Short.MAX_VALUE)
                 .addGroup(_mainPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(_previousCrsBtn)
                     .addComponent(_nextCrsBtn))
@@ -535,6 +564,52 @@ public class CourseEditor extends javax.swing.JFrame {
         this._nextCrsBtn.setEnabled(false);
     }//GEN-LAST:event__deleteCrsBtnActionPerformed
 
+    private void _findAllDescendantsBtnActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__findAllDescendantsBtnActionPerformed
+        // find all courses listing the course in the search box as ancestor.
+        String ccode = this._codeFld.getText();
+        Iterator<String> ccodes = Course.getAllCodesIterator();
+        Set<Course> reqs = new TreeSet<>();
+        while (ccodes.hasNext()) {
+            String cc_str = ccodes.next();
+            if (cc_str.equals(ccode.trim())) continue;
+            Course c = Course.getCourseByCode(cc_str);
+            if (c.requiresCourse(ccode)) reqs.add(c);
+        }
+        String result = "Courses Requiring "+ccode+":\n";
+        int i=0;
+        for (Course c : reqs) {
+            result += c.getCode()+" "+c.getName();
+            if (++i % 2 == 0) result += "\n";
+            else result += " , ";
+        }
+        JOptionPane.showConfirmDialog(null, result);
+    }//GEN-LAST:event__findAllDescendantsBtnActionPerformed
+
+    private void _showAllPrereqsBtnActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__showAllPrereqsBtnActionPerformed
+        // find all courses that are prereqs for this course (prereqs plus the
+        // prereqs' prereqs)
+        String ccode = this._codeFld.getText();
+        Set<String> all_prereqs = new TreeSet<>();
+        Set<String> stack = new HashSet<>();
+        stack.add(ccode);
+        while(stack.size()>0) {
+            Iterator<String> sit = stack.iterator();
+            ccode = sit.next();
+            sit.remove();
+            Course cc = Course.getCourseByCode(ccode);
+            Set<Set<String>> ccodes = cc.getPrereqs();
+            for (Set<String> cs : ccodes) {
+                all_prereqs.addAll(cs);
+                stack.addAll(cs);
+            }
+        }
+        String result = "All Courses Required for "+_codeFld.getText()+":\n";
+        result = all_prereqs.stream().
+                        map(c -> Course.getCourseByCode(c).toString()+"\n").
+                          reduce(result, String::concat);
+        JOptionPane.showConfirmDialog(null, result);        
+    }//GEN-LAST:event__showAllPrereqsBtnActionPerformed
+
     
     /**
      * invoke without any command-line arguments.
@@ -585,6 +660,7 @@ public class CourseEditor extends javax.swing.JFrame {
     private javax.swing.JButton _deleteCrsBtn;
     private javax.swing.JTextField _diffLvlFld;
     private javax.swing.JTextField _displayNameFld;
+    private javax.swing.JButton _findAllDescendantsBtn;
     private javax.swing.JLabel _idLbl;
     private javax.swing.JPanel _mainPanel;
     private javax.swing.JButton _nextCrsBtn;
@@ -593,11 +669,13 @@ public class CourseEditor extends javax.swing.JFrame {
     private javax.swing.JButton _saveAllCrssBtn;
     private javax.swing.JButton _saveCrsBtn;
     private javax.swing.JButton _searchBtn;
+    private javax.swing.JButton _showAllPrereqsBtn;
     private javax.swing.JTextField _synonymsFld;
     private javax.swing.JTextField _termsOfferedFld;
     private javax.swing.JTextField _titleFld;
     private javax.swing.JLabel jLabel1;
     private javax.swing.JLabel jLabel10;
+    private javax.swing.JLabel jLabel11;
     private javax.swing.JLabel jLabel2;
     private javax.swing.JLabel jLabel3;
     private javax.swing.JLabel jLabel4;

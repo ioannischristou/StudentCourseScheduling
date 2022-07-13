@@ -62,7 +62,7 @@
                           <Group type="103" groupAlignment="1" attributes="0">
                               <Component id="_courseTitleFld" alignment="0" max="32767" attributes="0"/>
                               <Group type="102" attributes="0">
-                                  <EmptySpace min="0" pref="565" max="32767" attributes="0"/>
+                                  <EmptySpace min="0" pref="600" max="32767" attributes="0"/>
                                   <Component id="_addCourseBtn" min="-2" max="-2" attributes="0"/>
                               </Group>
                           </Group>
@@ -91,35 +91,32 @@
                                       <Component id="jScrollPane2" max="32767" attributes="0"/>
                                   </Group>
                               </Group>
-                              <Group type="102" attributes="0">
-                                  <Group type="103" groupAlignment="0" attributes="0">
-                                      <Component id="_numCoursesPerTermChkBox" alignment="0" min="-2" max="-2" attributes="0"/>
-                                      <Group type="102" alignment="0" attributes="0">
-                                          <Group type="103" groupAlignment="1" max="-2" attributes="0">
-                                              <Group type="102" attributes="0">
-                                                  <Component id="_isExactChkBox" min="-2" max="-2" attributes="0"/>
-                                                  <EmptySpace type="separate" max="-2" attributes="0"/>
-                                                  <Component id="jLabel5" min="-2" max="-2" attributes="0"/>
-                                              </Group>
-                                              <Component id="jLabel6" min="-2" max="-2" attributes="0"/>
-                                          </Group>
-                                          <EmptySpace max="-2" attributes="0"/>
-                                          <Group type="103" groupAlignment="0" max="-2" attributes="0">
-                                              <Component id="_numCoursesFld" max="32767" attributes="0"/>
-                                              <Component id="_minCreditsFld" pref="70" max="32767" attributes="0"/>
-                                          </Group>
-                                      </Group>
-                                      <Group type="102" alignment="0" attributes="0">
-                                          <Component id="_honorStudentChkBox" min="-2" max="-2" attributes="0"/>
-                                          <EmptySpace max="-2" attributes="0"/>
-                                          <Component id="_concAreaChkBox" min="-2" max="-2" attributes="0"/>
+                              <Component id="_numCoursesPerTermChkBox" alignment="0" min="-2" max="-2" attributes="0"/>
+                              <Group type="102" alignment="0" attributes="0">
+                                  <Group type="103" groupAlignment="1" max="-2" attributes="0">
+                                      <Group type="102" attributes="0">
+                                          <Component id="_isExactChkBox" min="-2" max="-2" attributes="0"/>
                                           <EmptySpace type="separate" max="-2" attributes="0"/>
-                                          <Component id="_isCapstoneChkBox" min="-2" max="-2" attributes="0"/>
-                                          <EmptySpace max="-2" attributes="0"/>
-                                          <Component id="_softOrderChkBox" min="-2" max="-2" attributes="0"/>
+                                          <Component id="jLabel5" min="-2" max="-2" attributes="0"/>
                                       </Group>
+                                      <Component id="jLabel6" min="-2" max="-2" attributes="0"/>
                                   </Group>
-                                  <EmptySpace min="0" pref="0" max="32767" attributes="0"/>
+                                  <EmptySpace max="-2" attributes="0"/>
+                                  <Group type="103" groupAlignment="0" max="-2" attributes="0">
+                                      <Component id="_numCoursesFld" max="32767" attributes="0"/>
+                                      <Component id="_minCreditsFld" pref="70" max="32767" attributes="0"/>
+                                  </Group>
+                              </Group>
+                              <Group type="102" alignment="0" attributes="0">
+                                  <Component id="_honorStudentChkBox" min="-2" max="-2" attributes="0"/>
+                                  <EmptySpace max="-2" attributes="0"/>
+                                  <Component id="_concAreaChkBox" min="-2" max="-2" attributes="0"/>
+                                  <EmptySpace type="separate" max="-2" attributes="0"/>
+                                  <Component id="_isCapstoneChkBox" min="-2" max="-2" attributes="0"/>
+                                  <EmptySpace max="-2" attributes="0"/>
+                                  <Component id="_softOrderChkBox" min="-2" max="-2" attributes="0"/>
+                                  <EmptySpace type="separate" max="-2" attributes="0"/>
+                                  <Component id="_OUChkBox" min="-2" max="-2" attributes="0"/>
                               </Group>
                           </Group>
                           <EmptySpace max="-2" attributes="0"/>
@@ -181,6 +178,7 @@
                       <Component id="_concAreaChkBox" alignment="3" min="-2" max="-2" attributes="0"/>
                       <Component id="_isCapstoneChkBox" alignment="3" min="-2" max="-2" attributes="0"/>
                       <Component id="_softOrderChkBox" alignment="3" min="-2" max="-2" attributes="0"/>
+                      <Component id="_OUChkBox" alignment="3" min="-2" max="-2" attributes="0"/>
                   </Group>
                   <EmptySpace max="-2" attributes="0"/>
                   <Group type="103" groupAlignment="3" attributes="0">
@@ -296,6 +294,7 @@
         <Component class="javax.swing.JTextField" name="_numCoursesFld">
           <Properties>
             <Property name="text" type="java.lang.String" value="0"/>
+            <Property name="toolTipText" type="java.lang.String" value="when #Courses... check-boxes are NOT ticked, negative value indicates inequality must reverse sign (&lt;=) in constraint"/>
           </Properties>
         </Component>
         <Component class="javax.swing.JCheckBox" name="_numCoursesPerTermChkBox">
@@ -396,6 +395,12 @@
         <Component class="javax.swing.JCheckBox" name="_softOrderChkBox">
           <Properties>
             <Property name="text" type="java.lang.String" value="Soft Order Prec. Constraint"/>
+            <Property name="enabled" type="boolean" value="false"/>
+          </Properties>
+        </Component>
+        <Component class="javax.swing.JCheckBox" name="_OUChkBox">
+          <Properties>
+            <Property name="text" type="java.lang.String" value="OU Constraint"/>
             <Property name="enabled" type="boolean" value="false"/>
           </Properties>
         </Component>

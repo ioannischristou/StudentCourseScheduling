@@ -85,4 +85,13 @@ public class PassedCourses {
     public Iterator<String> getPassedCourseCodesIterator() {
         return _passedCourseCodes.iterator();
     }        
+    
+    
+    /**
+     * return the total number of courses passed so far.
+     * @return int
+     */
+    public int size() {
+        return _passedCourseCodes.size();
+    }
 }

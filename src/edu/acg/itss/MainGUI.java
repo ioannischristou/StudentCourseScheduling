@@ -11,7 +11,12 @@ import java.time.LocalDate;
 import java.util.*;
 
 /**
- * main entry point to the ACG SCORER application.
+ * main entry point to the ACG SCORER application. The application allows 
+ * students to create course plans, ie what courses to take when, until their 
+ * graduation. Course planning is modeled as a Mixed Integer Programming problem
+ * with binary and continuous variables that is solved by an optimization solver
+ * (currently GUROBI, but the Open-Source SCIP solver also solves all resulting
+ * problems, but at a slower rate.)
  * @author itc
  */
 public class MainGUI extends javax.swing.JFrame {
@@ -41,6 +46,26 @@ public class MainGUI extends javax.swing.JFrame {
      * the user preferences for when to take the course.
      */
     private final HashMap<Integer, JTextField> _varTermsMap = new HashMap<>();
+    /**
+     * maintains for each termno in the solution, the text-field that contains
+     * the user preferences for how many courses to take in that term, eg 
+     * "&lt;4" means user want to take strictly less than 4 courses to take on
+     * that term, etc. User could also specify "&ge;3", or just "2". Whenever 
+     * such a value is provided in the text-field, it overrides any user 
+     * preferences in the <CODE>_maxNumCrsPerSemFld</CODE> text-field, but does
+     * NOT override college-imposed constraints on the maximum number of credits
+     * or courses, and thus it can result in infeasible schedules if not used
+     * carefully.
+     */
+    private final HashMap<Integer, JTextField> _numCoursesPerTerm2FldMap = 
+        new HashMap<>();
+    /**
+     * same as above, but holds as values the strings that were typed in each
+     * text-box, and is given as input to the 
+     * <CODE>MIPHandler.createMIPFile()</CODE> method.
+     */
+    private final HashMap<Integer, String> _numCoursesPerTerm2StrMap = 
+        new HashMap<>();
     
     /**
      * Creates new form MainGUI.
@@ -182,11 +207,20 @@ public class MainGUI extends javax.swing.JFrame {
 
         _outputsPanelLbl.setText("Outputs Area");
 
+        _outputAreaScrollPane.setHorizontalScrollBarPolicy(javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_ALWAYS);
+        _outputAreaScrollPane.setVerticalScrollBarPolicy(javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
+
         _outputsArea.setEditable(false);
         _outputsArea.setColumns(20);
+        _outputsArea.setFont(new java.awt.Font("Segoe UI", 0, 12)); // NOI18N
         _outputsArea.setRows(5);
         _outputAreaScrollPane.setViewportView(_outputsArea);
 
+        jScrollPane4.setHorizontalScrollBarPolicy(javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_ALWAYS);
+        jScrollPane4.setVerticalScrollBarPolicy(javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
+        jScrollPane4.setPreferredSize(_outputTextPane.getPreferredSize());
+
+        _outputTextPane.setFont(new java.awt.Font("Segoe UI", 0, 12)); // NOI18N
         jScrollPane4.setViewportView(_outputTextPane);
 
         jLabel5.setText("Schedule:");
@@ -198,20 +232,18 @@ public class MainGUI extends javax.swing.JFrame {
         _outputsPanelLayout.setHorizontalGroup(
             _outputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(_outputsPanelLayout.createSequentialGroup()
-                .addGroup(_outputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
-                    .addGroup(_outputsPanelLayout.createSequentialGroup()
-                        .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                        .addComponent(_outputAreaScrollPane, javax.swing.GroupLayout.PREFERRED_SIZE, 406, javax.swing.GroupLayout.PREFERRED_SIZE))
-                    .addGroup(javax.swing.GroupLayout.Alignment.LEADING, _outputsPanelLayout.createSequentialGroup()
-                        .addComponent(_outputsPanelLbl)
-                        .addGap(301, 301, 301)
-                        .addComponent(jLabel5)))
-                .addGap(18, 18, 18)
                 .addGroup(_outputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(_outputsPanelLayout.createSequentialGroup()
-                        .addGap(0, 0, Short.MAX_VALUE)
-                        .addComponent(jLabel6))
-                    .addComponent(jScrollPane4)))
+                        .addContainerGap()
+                        .addComponent(_outputsPanelLbl)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                        .addComponent(jLabel5))
+                    .addComponent(_outputAreaScrollPane))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(_outputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addComponent(jLabel6)
+                    .addComponent(jScrollPane4, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                .addContainerGap())
         );
         _outputsPanelLayout.setVerticalGroup(
             _outputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -221,10 +253,10 @@ public class MainGUI extends javax.swing.JFrame {
                     .addComponent(jLabel5)
                     .addComponent(jLabel6))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(_outputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                    .addComponent(jScrollPane4)
-                    .addComponent(_outputAreaScrollPane, javax.swing.GroupLayout.DEFAULT_SIZE, 286, Short.MAX_VALUE))
-                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                .addGroup(_outputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(jScrollPane4, javax.swing.GroupLayout.DEFAULT_SIZE, 286, Short.MAX_VALUE)
+                    .addComponent(_outputAreaScrollPane))
+                .addContainerGap())
         );
 
         _inputsPanel.setBorder(new javax.swing.border.SoftBevelBorder(javax.swing.border.BevelBorder.RAISED));
@@ -315,54 +347,52 @@ public class MainGUI extends javax.swing.JFrame {
                 .addComponent(_inputsPanelLbl)
                 .addGap(0, 0, Short.MAX_VALUE))
             .addGroup(_inputsPanelLayout.createSequentialGroup()
-                .addComponent(_passedCourseSelectorLbl)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                .addComponent(jLabel2)
-                .addContainerGap())
-            .addGroup(_inputsPanelLayout.createSequentialGroup()
-                .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 350, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jLabel3)
-                    .addComponent(jScrollPane5, javax.swing.GroupLayout.PREFERRED_SIZE, 350, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(_inputsPanelLayout.createSequentialGroup()
-                        .addComponent(_curDateLbl)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(_curDateTxtFld, javax.swing.GroupLayout.PREFERRED_SIZE, 125, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(_passedCourseSelectorLbl)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                        .addComponent(_runBtn, javax.swing.GroupLayout.PREFERRED_SIZE, 73, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addComponent(jLabel2))
                     .addGroup(_inputsPanelLayout.createSequentialGroup()
+                        .addComponent(jScrollPane2, javax.swing.GroupLayout.PREFERRED_SIZE, 350, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addComponent(jLabel3)
+                            .addComponent(jScrollPane5, javax.swing.GroupLayout.PREFERRED_SIZE, 350, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                         .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                             .addGroup(_inputsPanelLayout.createSequentialGroup()
-                                .addComponent(jScrollPane3, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addComponent(_curDateLbl)
                                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                    .addComponent(_shortestComplTimeBtn, javax.swing.GroupLayout.DEFAULT_SIZE, 149, Short.MAX_VALUE)
-                                    .addComponent(_diffiBalanceBtn, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))
+                                .addComponent(_curDateTxtFld, javax.swing.GroupLayout.PREFERRED_SIZE, 125, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                .addComponent(_runBtn, javax.swing.GroupLayout.PREFERRED_SIZE, 73, javax.swing.GroupLayout.PREFERRED_SIZE))
                             .addGroup(_inputsPanelLayout.createSequentialGroup()
-                                .addComponent(jLabel1)
-                                .addGap(0, 0, Short.MAX_VALUE))
+                                .addComponent(jScrollPane3, javax.swing.GroupLayout.PREFERRED_SIZE, 200, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                    .addComponent(_shortestComplTimeBtn, javax.swing.GroupLayout.PREFERRED_SIZE, 145, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addComponent(_diffiBalanceBtn, javax.swing.GroupLayout.PREFERRED_SIZE, 134, javax.swing.GroupLayout.PREFERRED_SIZE)))
                             .addGroup(_inputsPanelLayout.createSequentialGroup()
                                 .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                    .addComponent(_summerSemestersOffChkBox)
-                                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, _inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                                        .addComponent(_stChkBox, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                        .addComponent(_s2ChkBox, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                        .addComponent(_s1ChkBox, javax.swing.GroupLayout.Alignment.TRAILING))
-                                    .addComponent(_honorStudentChkBox))
-                                .addGap(18, 18, 18)
-                                .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                    .addComponent(jLabel1)
                                     .addGroup(_inputsPanelLayout.createSequentialGroup()
-                                        .addComponent(jLabel4)
+                                        .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                            .addComponent(_summerSemestersOffChkBox)
+                                            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, _inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                                                .addComponent(_stChkBox, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                                .addComponent(_s2ChkBox, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                                .addComponent(_s1ChkBox, javax.swing.GroupLayout.Alignment.TRAILING))
+                                            .addComponent(_honorStudentChkBox))
+                                        .addGap(18, 18, 18)
+                                        .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                                            .addComponent(jLabel7)
+                                            .addComponent(jLabel4))
                                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                        .addComponent(_maxNumCrsPerSemFld))
-                                    .addGroup(_inputsPanelLayout.createSequentialGroup()
-                                        .addComponent(jLabel7)
-                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                        .addComponent(_maxNumCoursesDuringThesisFld)))))
-                        .addContainerGap())))
+                                        .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                            .addComponent(_maxNumCrsPerSemFld, javax.swing.GroupLayout.PREFERRED_SIZE, 56, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                            .addComponent(_maxNumCoursesDuringThesisFld, javax.swing.GroupLayout.PREFERRED_SIZE, 56, javax.swing.GroupLayout.PREFERRED_SIZE))))
+                                .addGap(0, 0, Short.MAX_VALUE)))))
+                .addContainerGap())
         );
         _inputsPanelLayout.setVerticalGroup(
             _inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -400,7 +430,7 @@ public class MainGUI extends javax.swing.JFrame {
                         .addComponent(_s2ChkBox)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                         .addComponent(_stChkBox)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 25, Short.MAX_VALUE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 19, Short.MAX_VALUE)
                         .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                             .addComponent(_runBtn)
                             .addComponent(_curDateTxtFld, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
@@ -455,17 +485,19 @@ public class MainGUI extends javax.swing.JFrame {
         layout.setHorizontalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
+                .addContainerGap()
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(_inputsPanel, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                    .addComponent(_outputsPanel, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                    .addComponent(_outputsPanel, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                    .addComponent(_inputsPanel, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
                 .addContainerGap())
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
+                .addContainerGap()
                 .addComponent(_inputsPanel, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(_outputsPanel, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addComponent(_outputsPanel, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                 .addContainerGap())
         );
 
@@ -483,13 +515,24 @@ public class MainGUI extends javax.swing.JFrame {
         // create the MIP model, and then execute the GUROBI optimizer
         // to solve the model and write the results to the output area. During
         // this time, the GUI will be un-responsive.
-        this.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
         // before anything else, set current date
         String cur_date = this._curDateTxtFld.getText();
         String[] cds = cur_date.split("/");
         CurrentDate._curDay = Integer.parseInt(cds[0]);
         CurrentDate._curMonth = Integer.parseInt(cds[1]);
         CurrentDate._curYear = Integer.parseInt(cds[2]);
+        final int Smax = _miphdlr.getScheduleParams().getSmax();
+        // check if the first planning semester is a FALL term, and if it's not
+        // then ask for the number of passed OU courses during the current 
+        // academic year
+        int passed_OU_in_cur_academic_year = 0;
+        if (!Course.isFallTerm(1)) {
+            String num_str = 
+                    JOptionPane.showInputDialog("#OU courses already taken "+
+                                                "during current academic year");
+            passed_OU_in_cur_academic_year = Integer.parseInt(num_str);
+        }
+        this.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
         // first, get the passed courses and the desired courses from the JList
         // objects
         int[] sel_passed = this._passedCoursesList.getSelectedIndices();
@@ -515,6 +558,13 @@ public class MainGUI extends javax.swing.JFrame {
         int conc_sel_ind = this._concNamesList.getSelectedIndex();
         if (conc_sel_ind>=0) 
             concentration_name = this._concNamesList.getSelectedValue();
+        else {
+            JOptionPane.showConfirmDialog(null, 
+                                          "You must select "+
+                                          "a concentration area first");
+            this.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
+            return;
+        }
         int max_crs_per_sem = Integer.MAX_VALUE;
         try {
             max_crs_per_sem = 
@@ -540,17 +590,21 @@ public class MainGUI extends javax.swing.JFrame {
             _miphdlr.createMIPFile(isHonor, 
                                    max_crs_per_sem, max_num_courses_dur_thesis,
                                    s1off, s2off, stoff, 
-                                   passed_codes, desired_codes, 
+                                   _numCoursesPerTerm2StrMap, 
+                                   passed_codes, passed_OU_in_cur_academic_year,
+                                   desired_codes, 
                                    concentration_name,
-                                   1000, 100, 1);
+                                   1000, 100, 1, 10);
         }
         else if (this._diffiBalanceBtn.isSelected()) {
             _miphdlr.createMIPFile(isHonor, 
                                    max_crs_per_sem, max_num_courses_dur_thesis,
                                    s1off, s2off, stoff, 
-                                   passed_codes, desired_codes, 
+                                   _numCoursesPerTerm2StrMap,
+                                   passed_codes, passed_OU_in_cur_academic_year,
+                                   desired_codes, 
                                    concentration_name,
-                                   1, 1000, 100);            
+                                   1, 100, 10, 1000);            
         }
         this._outputsArea.setText("schedule.lp created.\nNow running GUROBI");
         String result = null;
@@ -563,6 +617,7 @@ public class MainGUI extends javax.swing.JFrame {
                     _miphdlr.getLastOptimalSolution();
             this._outputTextPane.setText("");  // reset the output text pane
             _varTermsMap.clear();
+            _numCoursesPerTerm2FldMap.clear();
             StyledDocument doc = this._outputTextPane.getStyledDocument();
             SimpleAttributeSet attr = new SimpleAttributeSet();
             /* below is example code for adding widgets in JTextPane
@@ -595,7 +650,23 @@ public class MainGUI extends javax.swing.JFrame {
             while (term_it.hasNext()) {
                 int tno = term_it.next();
                 String tname = Course.getTermNameByTermNo(tno);
-                doc.insertString(doc.getLength(), "--- "+tname+" ---\n", attr);
+                doc.insertString(doc.getLength(), "--- "+tname+" --- ", attr);
+                doc.insertString(doc.getLength(), " #Courses for Term: ", attr);
+                this._outputTextPane.setCaretPosition(this._outputTextPane.
+                                                          getDocument().
+                                                              getLength());
+                JTextField tfld2 = new JTextField("");
+                tfld2.setToolTipText(
+                            "Enter #Courses constraint for this term "+
+                            "eg '<=3' or '2'");
+                // show constraint value if there exists one
+                if (_numCoursesPerTerm2StrMap.containsKey(tno)) {
+                    tfld2.setText(_numCoursesPerTerm2StrMap.get(tno));
+                }
+                _numCoursesPerTerm2FldMap.put(tno, tfld2);
+                this._outputTextPane.insertComponent(tfld2);
+                doc.insertString(doc.getLength(), "\n", attr);
+                
                 Set<Integer> cids = crss_by_trm_map.get(tno);
                 for (int cid : cids) {
                     Course c = Course.getCourseById(cid);
@@ -615,7 +686,8 @@ public class MainGUI extends javax.swing.JFrame {
                     JTextField tfld = new JTextField("");
                     tfld.setToolTipText(
                             "Enter terms to allow separated by space or '-' to"+
-                            " indicate undesired course; eg 'FA2022 SP2023'");
+                            " indicate undesired course or 'allotherterms' to"+
+                            " indicate any other term OK; eg 'FA2022 SP2023'");
                     _varTermsMap.put(cid, tfld);
                     this._outputTextPane.insertComponent(tfld);
                     doc.insertString(doc.getLength(), "\n", attr);
@@ -624,10 +696,20 @@ public class MainGUI extends javax.swing.JFrame {
             JButton btn = new JButton("Change Terms");
             btn.addActionListener(new ActionListener() {
                 public void actionPerformed(ActionEvent c) {
+                    _numCoursesPerTerm2StrMap.clear();
+                    Iterator<Integer> tit = 
+                        _numCoursesPerTerm2FldMap.keySet().iterator();
+                    while (tit.hasNext()) {
+                        int tno = tit.next();
+                        JTextField tfld = _numCoursesPerTerm2FldMap.get(tno);
+                        _numCoursesPerTerm2StrMap.put(tno, tfld.getText());
+                    }
                     Iterator<Integer> vit = _varTermsMap.keySet().iterator();
                     List<Integer> sel_inds = new ArrayList<>();
                     while (vit.hasNext()) {
                         int vid = vit.next();
+                        int cur_termno = 
+                                _miphdlr.getLastOptimalSolution().get(vid);
                         JTextField vfld = _varTermsMap.get(vid);
                         if (vfld.getText().length()>0) {
                             String terms = vfld.getText().trim();
@@ -636,9 +718,19 @@ public class MainGUI extends javax.swing.JFrame {
                                 if ("-".equals(terms)) {  // undesired course
                                     terms = "";
                                 }
+                                else if (!CodeNameAllowedTerms.
+                                             prefferedTermsAllowed(cv.getCode(), 
+                                                                   terms,
+                                                                   cur_termno,
+                                                                   Smax)){
+                                    terms = "";  // indicates course is not 
+                                                 // offered during terms
+                                }
                                 // search to find where in _itcClassListModel
-                                // is the given course
+                                // is the given course; if not found (LE course)
+                                // add it to the model
                                 int sz = _itcClassListModel.getSize();
+                                boolean found = false;
                                 for (int i=0; i<sz; i++) {
                                     CodeNameAllowedTerms mi = 
                                             (CodeNameAllowedTerms) 
@@ -651,8 +743,18 @@ public class MainGUI extends javax.swing.JFrame {
                                                         terms);
                                         _itcClassListModel.set(i, new_cnat);
                                         sel_inds.add(i);
+                                        found = true;
                                         break;
                                     }
+                                }
+                                if (!found) {  // course not in major program
+                                        CodeNameAllowedTerms new_cnat = 
+                                                new CodeNameAllowedTerms(
+                                                        cv.getCode(), 
+                                                        cv.getName(), 
+                                                        terms);                                    
+                                    _itcClassListModel.addElement(new_cnat);
+                                    sel_inds.add(_itcClassListModel.size()-1);
                                 }
                             }
                         }
@@ -879,12 +981,15 @@ public class MainGUI extends javax.swing.JFrame {
          * For details see http://download.oracle.com/javase/tutorial/uiswing/lookandfeel/plaf.html 
          */
         try {
+            /*
             for (javax.swing.UIManager.LookAndFeelInfo info : javax.swing.UIManager.getInstalledLookAndFeels()) {
                 if ("Nimbus".equals(info.getName())) {
                     javax.swing.UIManager.setLookAndFeel(info.getClassName());
                     break;
                 }
             }
+            */
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
         } catch (ClassNotFoundException ex) {
             java.util.logging.Logger.getLogger(MainGUI.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
         } catch (InstantiationException ex) {

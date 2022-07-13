@@ -133,16 +133,26 @@ public class DesiredCourses {
      * get the allowed terms for the given course, in terms of the term numbers
      * from the current date (for example {1, 2, 3}).
      * @param code String
+     * @param cur_term int must be in [0, 1, ...Smax] with 0 indicating there is
+     * no cur_term to which the course with the given code is assigned
      * @param Smax int
      * @return Set&lt;Integer&gt;
      */
-    public Set<Integer> getAllowedTerms4Course(String code, int Smax) {
+    public Set<Integer> getAllowedTerms4Course(String code, 
+                                               int cur_term, 
+                                               int Smax) {
         Set<String> allowed_terms = _desiredCourseCodes.get(code);
         Set<Integer> res = new HashSet<>();
         for (String t : allowed_terms) {
             if ("allterms".equals(t)) {
                 for (int i=1; i<=Smax; i++) res.add(i);
                 return res;
+            }
+            else if ("allotherterms".equals(t)) {
+                for (int s=1; s<=Smax; s++) {
+                    if (s!=cur_term) res.add(s);
+                }
+                continue;
             }
             int tno = Course.getTermNo(t);
             res.add(tno);
