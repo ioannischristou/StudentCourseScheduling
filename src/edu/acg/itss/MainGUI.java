@@ -13,7 +13,13 @@ import java.util.*;
 /**
  * main entry point to the ACG SCORER application. The application allows 
  * students to create course plans, ie what courses to take when, until their 
- * graduation. Course planning is modeled as a Mixed Integer Programming problem
+ * graduation. Students may then edit their course plans, by specifying further
+ * desired (or undesired!) courses, when to take certain courses, and set 
+ * constraints on the number of courses they wish to take on specific terms. 
+ * Once they have specified all their preferences, they can hit the "Change 
+ * Terms" button, and then the "Run" button to produce a new plan that satisfies
+ * their new preferences as well.
+ * Course planning is modeled as a Mixed Integer Programming problem
  * with binary and continuous variables that is solved by an optimization solver
  * (currently GUROBI, but the Open-Source SCIP solver also solves all resulting
  * problems, but at a slower rate.)
@@ -25,7 +31,23 @@ public class MainGUI extends javax.swing.JFrame {
      * path to all required files is given at command line.
      */
     private static String _dir2Files = null;
-   
+    
+    /**
+     * student-name needed to add to the [passed|desired]courses.txt files to 
+     * differentiate from one application process to another concurrently 
+     * running. Has package-access level as the _startTime so it is accessible
+     * from MIPHandler.
+     */
+    static String _studentName = "Student";
+    /**
+     * the time-stamp when the process starts is needed for differentiating 
+     * between independent applications of the same program running at the 
+     * same time (but they must have all started at a different time, when
+     * the granularity is taken at the milli-second level. Student name already
+     * should be sufficient for this differentiation.
+     */
+    final static long _startTime = System.currentTimeMillis();
+    
     /**
      * model behind all courses maintains Course objects.
      */
@@ -71,6 +93,11 @@ public class MainGUI extends javax.swing.JFrame {
      * Creates new form MainGUI.
      */
     public MainGUI() {
+        // first, ask for the name of the student for whom the plan will be 
+        // built.
+        _studentName = JOptionPane.showInputDialog("Enter Student Name:");
+        // next call technically "escapes constructor" but seems to be OK
+        this.setTitle("ACG SCORER for "+_studentName);
         populateCourseListModels();
         initComponents();
         // show passed courses if there are any
@@ -120,7 +147,7 @@ public class MainGUI extends javax.swing.JFrame {
      * display in the GUI elements.
      */
     final void populateCourseListModels() {
-        _miphdlr.readProblemData();
+        _miphdlr.readProblemData(_studentName);
         String program_code = _miphdlr.getScheduleParams().getProgramCode();
         Iterator<String> codes = Course.getAllCodesIterator();
         while (codes.hasNext()) {
@@ -586,32 +613,37 @@ public class MainGUI extends javax.swing.JFrame {
                                this._maxNumCrsPerSemFld.getText()+
                                " will stay at Integer.MAX_VALUE instead");
         }
+        String schedfile = null;
         if (this._shortestComplTimeBtn.isSelected()) {
-            _miphdlr.createMIPFile(isHonor, 
-                                   max_crs_per_sem, max_num_courses_dur_thesis,
-                                   s1off, s2off, stoff, 
-                                   _numCoursesPerTerm2StrMap, 
-                                   passed_codes, passed_OU_in_cur_academic_year,
-                                   desired_codes, 
-                                   concentration_name,
-                                   1000, 100, 1, 10);
+            schedfile = _miphdlr.createMIPFile(isHonor, 
+                                               max_crs_per_sem, 
+                                               max_num_courses_dur_thesis,
+                                               s1off, s2off, stoff, 
+                                               _numCoursesPerTerm2StrMap, 
+                                               passed_codes, 
+                                               passed_OU_in_cur_academic_year,
+                                               desired_codes, 
+                                               concentration_name,
+                                               1000, 100, 1, 10);
         }
         else if (this._diffiBalanceBtn.isSelected()) {
-            _miphdlr.createMIPFile(isHonor, 
-                                   max_crs_per_sem, max_num_courses_dur_thesis,
-                                   s1off, s2off, stoff, 
-                                   _numCoursesPerTerm2StrMap,
-                                   passed_codes, passed_OU_in_cur_academic_year,
-                                   desired_codes, 
-                                   concentration_name,
-                                   1, 100, 10, 1000);            
+            schedfile = _miphdlr.createMIPFile(isHonor, 
+                                               max_crs_per_sem, 
+                                               max_num_courses_dur_thesis,
+                                               s1off, s2off, stoff, 
+                                               _numCoursesPerTerm2StrMap,
+                                               passed_codes, 
+                                               passed_OU_in_cur_academic_year,
+                                               desired_codes, 
+                                               concentration_name,
+                                               1, 100, 10, 1000);            
         }
-        this._outputsArea.setText("schedule.lp created.\nNow running GUROBI");
+        this._outputsArea.setText(schedfile+" created.\nNow running GUROBI");
         String result = null;
         try {
             //final String program_code = 
             //        _miphdlr.getScheduleParams().getProgramCode();
-            result = _miphdlr.optimizeSchedule();
+            result = _miphdlr.optimizeSchedule(schedfile);
             // write result to output editor-pane too
             HashMap<Integer, Integer> solnmap = 
                     _miphdlr.getLastOptimalSolution();
@@ -792,10 +824,10 @@ public class MainGUI extends javax.swing.JFrame {
         }
         catch (GRBException e) {
             result = "GUROBI threw GRBException: "+e.getLocalizedMessage();
-            result += "\nMIP program should be in file ./schedule.lp";
+            result += "\nMIP program should be in file ./"+schedfile;
         }
         catch(IOException e) {
-            result = "Printing into file ./schedule_result_vars.out failed?";            
+            result = "Printing into file ./"+schedfile+".result_vars.out fail?";            
         }
         catch (Exception e) {
             result = "oops...";
@@ -853,10 +885,11 @@ public class MainGUI extends javax.swing.JFrame {
 
     
     private void _saveCoursesMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__saveCoursesMenuItemActionPerformed
-        // save the selected passed courses in file "passedcourses.txt".
+        // save the selected passed courses in file "passedcourses_stname.txt".
         boolean ok = true;
+        String passedcoursesfilename = "passedcourses_"+_studentName+".txt";
         try(PrintWriter pw = 
-                new PrintWriter(new FileWriter("passedcourses.txt"))) {
+                new PrintWriter(new FileWriter(passedcoursesfilename))) {
             int[] sel_passed_courses = 
                     this._passedCoursesList.getSelectedIndices();
             for (int i : sel_passed_courses) {
@@ -871,9 +904,10 @@ public class MainGUI extends javax.swing.JFrame {
             JOptionPane.showConfirmDialog(null, 
                                           "failed to save passed courses");
         }
-        // save the selected desired courses in file "desiredcourses.txt".
+        // save the selected desired courses in file "desiredcourses_stname.txt"
+        String desiredcoursesfilename = "desiredcourses_"+_studentName+".txt";
         try(PrintWriter pw = 
-                new PrintWriter(new FileWriter("desiredcourses.txt"))) {
+                new PrintWriter(new FileWriter(desiredcoursesfilename))) {
             int[] sel_desired_courses = 
                     this._desiredCoursesList.getSelectedIndices();
             for (int i : sel_desired_courses) {
@@ -884,11 +918,14 @@ public class MainGUI extends javax.swing.JFrame {
             pw.flush();
             if (ok) {
                 JOptionPane.showConfirmDialog(null, "selections saved in "+
-                                                    "passedcourses.txt and "+
-                                                    "desiredcourses.txt files");
+                                                    passedcoursesfilename+
+                                                    " and "+
+                                                    desiredcoursesfilename+
+                                                    " files");
             }
             else JOptionPane.showConfirmDialog(null, "saved desired courses "+
-                                                     " in desiredcourses.txt");
+                                                     " in "+
+                                                     desiredcoursesfilename);
         }
         catch (Exception e) {
             e.printStackTrace();
@@ -900,9 +937,10 @@ public class MainGUI extends javax.swing.JFrame {
     
     private void _loadMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__loadMenuItemActionPerformed
         // load the passed courses from file "passedcourses.txt" if it exists
-        File pf = new File("passedcourses.txt");
+        String pfname = "passedcourses_"+_studentName+".txt";
+        File pf = new File(pfname);
         if (pf.exists()) {
-            try(BufferedReader br = new BufferedReader(new FileReader("passedcourses.txt"))) {
+            try(BufferedReader br = new BufferedReader(new FileReader(pfname))){
                 List<Integer> cids = new ArrayList<>();
                 while(true) {
                     String line = br.readLine();
@@ -921,12 +959,14 @@ public class MainGUI extends javax.swing.JFrame {
             }
         }
         else {
-            JOptionPane.showConfirmDialog(null, "couldn't find passedcourses.txt file");
+            JOptionPane.showConfirmDialog(null, 
+                                          "couldn't find "+pfname+" file");
         }
         // load the desired courses from file "desiredcourses.txt" if it exists
-        File df = new File("desiredcourses.txt");
+        String dfname = "desiredcourses_"+_studentName+".txt";
+        File df = new File(dfname);
         if (df.exists()) {
-            try(BufferedReader br = new BufferedReader(new FileReader("desiredcourses.txt"))) {
+            try(BufferedReader br = new BufferedReader(new FileReader(dfname))){
                 List<Integer> cids = new ArrayList<>();
                 while(true) {
                     String line = br.readLine();
@@ -956,7 +996,8 @@ public class MainGUI extends javax.swing.JFrame {
             }
         }
         else {
-            JOptionPane.showConfirmDialog(null, "couldn't find desiredcourses.txt file");
+            JOptionPane.showConfirmDialog(null, 
+                                          "couldn't find "+dfname+" file");
         }
     }//GEN-LAST:event__loadMenuItemActionPerformed
 

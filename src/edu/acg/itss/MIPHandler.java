@@ -61,32 +61,40 @@ public class MIPHandler {
      * The course data are read from file "cls.csv" (in the specific program 
      * directory currently in use). Details of this file's format are in the 
      * javadocs for class <CODE>Course</CODE>.
-     * If the file "passedcourses.txt" exists in the current directory, it reads 
-     * all course numbers the student has already passed: the file consists of 
-     * course codes separated by semi-column. Desired courses must be present in 
-     * the file "desiredcourses.txt" to be read from the current directory too.
-     * Finally, if the file "estimated_grades.txt" exists in the current dir, it
-     * reads all course numbers for which there exists an estimate (from QARMA)
-     * of the grade the student is going to get, and sets the appropriate field
-     * in the right <CODE>Course</CODE> objects (default is zero which does not
-     * modify the problem at all), assuming the estimated grade is above the 
-     * minimum threshold set in property "MinGradeThres".
+     * If the file "passedcourses_&lt;studentName&gt;.txt" exists in the current 
+     * directory, it reads all course numbers the student has already passed: 
+     * the file consists of course codes separated by semi-column. Desired 
+     * courses must be present in file "desiredcourses_&lt;studentName&gt;.txt" 
+     * to be read from the current directory too.
+     * Finally, if the file "estimated_grades_&lt;studentName&gt;.txt" exists in 
+     * the current dir, it reads all course numbers for which there exists an 
+     * estimate (from QARMA) of the grade the student is going to get, and sets 
+     * the appropriate field in the right <CODE>Course</CODE> objects (default 
+     * is zero which does not modify the problem at all), assuming the estimated 
+     * grade is above the minimum threshold set in property "MinGradeThres".
+     * @param studentName String the name of the student for whom the schedule 
+     * is; this parameter is needed to allow multiple processes running the 
+     * same application to run concurrently on the same machine (multiple 
+     * windows of the <CODE>MainGUI</CODE> main class)
      */
-    public void readProblemData() {
+    public void readProblemData(String studentName) {
         final String dir2Files = MainGUI.getDir2Files();
         _params = new ScheduleParams(dir2Files+"/params.props");
         Course.readAllCoursesFromFile(dir2Files+"/cls.csv", _params.getSmax());
         _passed = new PassedCourses();
-        File psd = new File("passedcourses.txt");
+        String passedcoursesfilename = "passedcourses_"+studentName+".txt";
+        File psd = new File(passedcoursesfilename);
         if (psd.exists()) {
-            _passed.readPassedCoursesFromFile("passedcourses.txt");
+            _passed.readPassedCoursesFromFile(passedcoursesfilename);
         }
         _desired = new DesiredCourses();
-        File dsd = new File("desiredcourses.txt");
+        String desiredcoursesfilename = "desiredcourses_"+studentName+".txt";
+        File dsd = new File(desiredcoursesfilename);
         if (dsd.exists()) {
-            _desired.readDesiredCoursesFromFile("desiredcourses.txt");
+            _desired.readDesiredCoursesFromFile(desiredcoursesfilename);
         }        
-        File est = new File("estimated_grades.txt");
+        String estgradesfilename = "estimated_grades_"+studentName+".txt";
+        File est = new File(estgradesfilename);
         if (est.exists()) {
             final float thres = _params.getMinGradeThres();
             try (BufferedReader br = new BufferedReader(new FileReader(est))) {
@@ -125,7 +133,7 @@ public class MIPHandler {
     
     /**
      * get the schedule parameters object. Must have called 
-     * <CODE>readProblemData()</CODE> first.
+     * <CODE>readProblemData(studentName)</CODE> first.
      * @return ScheduleParams
      */
     public ScheduleParams getScheduleParams() {
@@ -135,7 +143,8 @@ public class MIPHandler {
     
     /**
      * get the reference to the <CODE>PassedCourses</CODE> object. Method should
-     * only be called after <CODE>readProblemData()</CODE> has been invoked.
+     * only be called after <CODE>readProblemData(studentname)</CODE> has been 
+     * invoked.
      * @return PassedCourses may be empty (but not null)
      */
     public PassedCourses getPassedCourses() {
@@ -145,8 +154,8 @@ public class MIPHandler {
 
     /**
      * get the reference to the <CODE>DesiredCourses</CODE> object. Method
-     * should only be called after <CODE>readProblemData()</CODE> has been 
-     * invoked.
+     * should only be called after <CODE>readProblemData(studentname)</CODE> has 
+     * been invoked.
      * @return DesiredCourses may be empty (but not null)
      */
     public DesiredCourses getDesiredCourses() {
@@ -155,9 +164,10 @@ public class MIPHandler {
 
     
     /**
-     * creates the file "schedule.lp" that describes the MIP Programming 
-     * problem of the student course scheduling problem, with objective being a 
-     * weighted combination of time-to-completion, total-number-of-credits,
+     * creates a file "schedule_&lt;studentname&gt;_&lt;ts&gt;.lp" that 
+     * describes a MIP Programming problem of the student course scheduling 
+     * problem, with objective being a weighted combination of 
+     * time-to-completion, total-number-of-credits, 
      * maximum-sum-of-course-difficulty-levels-per-semester and sum-of-grades. 
      * Always last, with coefficient -0.001, is the objective to maximize 
      * courses from designated program codes in the schedule params. The 
@@ -166,7 +176,7 @@ public class MIPHandler {
      * equal to the estimated grade of the course (assuming such estimates are 
      * known, and only for courses for which the estimate is above 3.0/4.0). 
      * Notice that these estimates, if they exist, are in the file 
-     * "estimated_grades.txt".
+     * "estimated_grades_&lt;studentName&gt;.txt".
      * Notice that despite the fact that this class holds references to the 
      * <CODE>[Passed | Desired]Courses</CODE> objects, the final say is whatever 
      * is selected in the GUI, and this is why these two sets are passed in as 
@@ -197,16 +207,20 @@ public class MIPHandler {
      * (per semester)
      * @param Crcoeff int the coefficient for the total-sum-of-credits objective
      * @param Grcoeff int the coefficient for the expected-GPA objective
+     * @return String the name of the schedule lp-formatted file created; the 
+     * reason for the timestamp in the name of the file is so that multiple 
+     * application windows can be open at the same time without interfering with 
+     * one another
      */
-    public void createMIPFile(boolean isHonorStudent,
-                              int maxNumCrsPerSem, int maxNumCrsDurThesis,
-                              boolean s1off, boolean s2off, boolean stoff,
-                              Map<Integer, String> numCoursesPerTrm2StrMap,
-                              Set<String> passed, int num_OU_cur_academic_year, 
-                              Set<String> desired,
-                              String concentration,
-                              int DNcoeff, int DLcoeff, int Crcoeff, 
-                              int Grcoeff) {
+    public String createMIPFile(boolean isHonorStudent,
+                                int maxNumCrsPerSem, int maxNumCrsDurThesis,
+                                boolean s1off, boolean s2off, boolean stoff,
+                                Map<Integer, String> numCoursesPerTrm2StrMap,
+                                Set<String> passed,int num_OU_cur_academic_year, 
+                                Set<String> desired,
+                                String concentration,
+                                int DNcoeff, int DLcoeff, int Crcoeff, 
+                                int Grcoeff) {
         if (concentration==null || concentration.length()==0)
             throw new IllegalArgumentException("concentration area name "+
                                                "cannot be null or empty");
@@ -1147,8 +1161,16 @@ public class MIPHandler {
         // 2.19 finally, the END delimiter of all LP files
         prob.append("\nEnd");
         
-        // 3. write the problem as an LP format file called "schedule.lp".
-        try (PrintWriter pw = new PrintWriter(new FileWriter("schedule.lp"))) {
+        // 3. write the problem as an LP format file called 
+        //    "schedule_<studentName>_<ts>.lp"
+        //    where <studentName> is the name of the student (entered as user-
+        //    input in the beginning of the program, and <ts> is the timestamp 
+        //    of the app start-time. This is done so that more than one 
+        //    application (MainGUI) windows can be open at the same time.
+        final long now = MainGUI._startTime;
+        final String stname = MainGUI._studentName;
+        String schedfile = "schedule_"+stname+"_"+now+".lp";
+        try (PrintWriter pw = new PrintWriter(new FileWriter(schedfile))) {
             pw.print(prob);
             pw.flush();
         }
@@ -1157,22 +1179,27 @@ public class MIPHandler {
             System.exit(-1);
         }
         // 4. the end!.
+        return schedfile;
     }
     
     
     /**
-     * solves the model in file "schedule.lp" and returns the results in a 
-     * String to be displayed in the output area. Variable values get written
-     * in file "schedule_result_vars.out".
-     * @return String
+     * solves the model in file "schedule_&lt;studentname&gt;_&lt;ts&gt;.lp" and 
+     * returns the results in a String to be displayed in the output area. 
+     * Variable values get written in file 
+     * "schedule_&lt;studentname&gt;_&lt;ts&gt;.lp.result_vars.out".
+     * @param schedfile String the name of the file containing the schedule for
+     * this problem
+     * @return String the schedule to write in the outputs area
      * @throws GRBException if GUROBI fails to solve the problem
      * @throws IOException if some I/O error occurs
      */
-    public String optimizeSchedule() throws GRBException, IOException {
+    public String optimizeSchedule(String schedfile) 
+        throws GRBException, IOException {
         _cid2tnoMap.clear();
         long start = System.currentTimeMillis();
         GRBEnv env = new GRBEnv();
-        GRBModel model = new GRBModel(env, "schedule.lp");
+        GRBModel model = new GRBModel(env, schedfile);
         model.optimize();
         int optimstatus = model.get(GRB.IntAttr.Status);
         if (optimstatus!=GRB.Status.OPTIMAL) {
@@ -1187,7 +1214,7 @@ public class MIPHandler {
         StringBuffer sb = new StringBuffer();
         sb.append(dstr);
         PrintWriter pwr = 
-                new PrintWriter(new FileWriter("schedule_result_vars.out"));
+                new PrintWriter(new FileWriter(schedfile+".result_vars.out"));
         // get the names of all variables of the form "x_i" that are set to 1
         Set<Integer> all_sol_varids = new HashSet<>();
         for (GRBVar v : model.getVars()) {
