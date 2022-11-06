@@ -23,7 +23,12 @@ import java.io.*;
  * that if the constraint is that from the set {ITC0001, ITC0002, ITC0003} up to
  * 1 class must be taken, and ITC0001 and ITC0003 are already taken, there is no
  * constraint produced to be written in the schedule. For this to occur, there 
- * must be no preceding "&lt;" or "=" sign in the value.
+ * must be no preceding "&lt;" or "=" sign in the value. Finally, the value for 
+ * the credits can also be a negative number; in this case, the absolute value 
+ * is interpreted to mean the minimum number of different "disciplines" that 
+ * must be represented in the selection of courses from the group described in 
+ * the next line (a "discipline" being the two or three letter code that is in
+ * front of the course code of any course.)
  * <p>Course groups can also model soft-order precedence constraints: a soft-
  * order precedence constraint is a constraint between 2 courses ci and cj, and 
  * asks that if both courses are to be taken, then ci must be taken before 
@@ -91,6 +96,12 @@ public class CourseGroup {
      * number of courses to be taken together during the SAME semester.
      */
     private final boolean _holdsPerSemester;
+    /**
+     * when different than 1, this number indicates the minimum number of 
+     * different disciplines that must be present in the final selection of 
+     * courses from this group of courses.
+     */
+    private final int _minNumDisciplines;
    
     
     /**
@@ -101,7 +112,7 @@ public class CourseGroup {
     public static CourseGroup createCourseGroup(String name) {
         CourseGroup cg = new CourseGroup(name, false, 
                                          new ArrayList<>(), 
-                                         0, false, false, 0);
+                                         0, false, false, 0, 1);
         _allCourseGroupsMap.put(name, cg);
         return cg;
     }
@@ -140,6 +151,11 @@ public class CourseGroup {
      * number is negative, the constraint is interpreted as an "at most this 
      * much" constraint, taking into account passed courses. For more, read the
      * overall class documentation.
+     * The 4th field of the 1st line (&lt;minnumcreditsreqd&gt;) must also be a
+     * number of course, but it may be a negative number (ie preceded by the "-"
+     * sign) in which case, there is no minimum number of credits constraint but
+     * instead, there is a minimum number of different disciplines constraint 
+     * set forth. For more, read the overall class documentation.
      * The file may also contain any lines AFTER the first two lines that start 
      * with "#" that designate comments (they are never read).
      * @param filename String
@@ -172,12 +188,17 @@ public class CourseGroup {
                                                         "minnumcourses");
             }
             int minnumcredits = Integer.parseInt(data[3]);
+            int minnumdisciplines = 1;
+            if (minnumcredits<0) {
+                minnumdisciplines = -minnumcredits;
+                minnumcredits = 0;
+            }
             data = br.readLine().split(";");
             List<String> codes = new ArrayList<>();
             codes.addAll(Arrays.asList(data));
             cg = new CourseGroup(name, is_conc, codes, 
                                  minnumcourses, isExact, holdsPerSemester,
-                                 minnumcredits);
+                                 minnumcredits, minnumdisciplines);
             _allCourseGroupsMap.put(name, cg);
             return cg;
         }
@@ -236,6 +257,14 @@ public class CourseGroup {
     
     
     /**
+     * reset all course-groups to allow re-loading.
+     */
+    public static void reset() {
+        CourseGroup._allCourseGroupsMap.clear();
+    }
+    
+    
+    /**
      * private single constructor is only called from the method 
      * <CODE>readCourseGroup(filename)</CODE> which is the only method that is
      * allowed to create <CODE>CourseGroup</CODE> objects, and adds them to the
@@ -247,17 +276,20 @@ public class CourseGroup {
      * @param isExact boolean refers to the previous variable
      * @param holdsPerSemester boolean refers to the previous variable also
      * @param minCreditsReq int may be zero
+     * @param minNumDisciplines int must always be &ge; 1
      */
     private CourseGroup(String name, boolean isConcentrationArea,
                         List<String> groupCodes, 
                         int minNumCoursesReq, 
                         boolean isExact, boolean holdsPerSemester, 
-                        int minCreditsReq) {
+                        int minCreditsReq,
+                        int minNumDisciplines) {
         _groupName = name;
         _isConcentrationArea = isConcentrationArea;
         _allGroupCodes = new ArrayList<>(groupCodes);
         _minNumCoursesReq = minNumCoursesReq;
         _minNumCreditsReq = minCreditsReq;
+        _minNumDisciplines = minNumDisciplines;
         _isExact = isExact;
         _holdsPerSemester = holdsPerSemester;
     }
@@ -373,8 +405,16 @@ public class CourseGroup {
     
     /**
      * return the minimum number of credits required from this group.
-     * @return int
+     * @return int always non-negative
      */
     public int getMinNumCreditsReqd() { return _minNumCreditsReq; }
+    
+    
+    /**
+     * return the minimum number of different disciplines that the selection of
+     * courses from this group must represent.
+     * @return int always positive number
+     */
+    public int getMinNumDisciplines() { return _minNumDisciplines; }
     
 }

@@ -514,10 +514,30 @@ public class CourseEditor extends javax.swing.JFrame {
     }//GEN-LAST:event__saveAllCrssBtnActionPerformed
 
     
+    /**
+     * notice that when a Course is deleted, any CourseGroup objects that have
+     * a reference to its code need to be updated.
+     * @param evt 
+     */
     private void _deleteCrsBtnActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__deleteCrsBtnActionPerformed
-        Course.deleteCourse(this._idLbl.getText());
+        String del_id_str = this._idLbl.getText();
+        final int tid = Integer.parseInt(del_id_str);
+        Course cdel = Course.getCourseById(tid);
+        Course.deleteCourse(del_id_str, _params.getSmax());
+        // check out what course groups reference this course, and alert user
+        String ref_groups = "";
+        Iterator<String> cgnamesit = CourseGroup.getCourseGroupNameIterator();
+        while (cgnamesit.hasNext()) {
+            String gname = cgnamesit.next();
+            CourseGroup cg = CourseGroup.getCourseGroupByName(gname);
+            Set<String> cnames = cg.getAllGroupCodes();
+            if (cnames.contains(cdel.getCode())) ref_groups+= gname + " ";
+        }
+        if (ref_groups.length()>0) {
+            JOptionPane.showInputDialog("Course to be deleted is referenced by"+
+                                        " following groups: \n"+ref_groups);
+        }
         // go to the previous course
-        final int tid = Integer.parseInt(this._idLbl.getText());
         int id = tid;
         while (--id>=0) {
             Course c = Course.getCourseById(id);
@@ -535,7 +555,7 @@ public class CourseEditor extends javax.swing.JFrame {
         if (id<0) {
             id = tid;
             final int lastid = Course.getLastId();
-            while (++id<=lastid) {
+            while (id++<=lastid) {
                 Course c = Course.getCourseById(id);
                 if (c!=null) {
                     populateForm(c);

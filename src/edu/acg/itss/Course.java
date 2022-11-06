@@ -277,6 +277,7 @@ public class Course implements Comparable {
                         diff_lvl = Integer.parseInt(linearr[8]);
                     }
                     catch (NumberFormatException e) {
+                        System.err.println("FOR Line="+line);
                         System.err.println("couldn't parse difficulty level,"+
                                            " will stay at zero");
                     }
@@ -392,11 +393,59 @@ public class Course implements Comparable {
     }
     
     
-    static void deleteCourse(String idstr) {
+    /**
+     * deletes the course identified by the number represented by the string
+     * idstr. All courses with higher ids have their id decremented by 1.
+     * @param idstr String such as "5"
+     * @param Smax int the maximum number of terms a schedule can be created for
+     */
+    static void deleteCourse(String idstr, int Smax) {
         int id = Integer.parseInt(idstr);
         Course c = Course.getCourseById(id);
         _allCoursesMap.remove(c._code);
         _id2CrsMap.remove(id);
+        // decrement the ids of all courses above it by 1
+        final int last_id = getLastId();
+        for (int i=id+1;i<=last_id; i++) {
+            Course ci = Course.getCourseById(i);
+            // create the synonyms
+            String synonyms = "";
+            for (String s : ci._synonymCodes) {
+                synonyms += s +" ";
+            }
+            // create the prereqs
+            String prereqs = "";
+            Iterator<Set<String>> ss_it = ci._prereqs.iterator();
+            while (ss_it.hasNext()) {
+                Set<String> ss = ss_it.next();
+                Iterator<String> sit = ss.iterator();
+                while (sit.hasNext()) {
+                    prereqs += sit.next();
+                    if (sit.hasNext()) prereqs += "+";
+                }
+                if (ss_it.hasNext()) prereqs += ",";
+            }
+            String coreqs = "";
+            for (String s : ci._coreqs) {
+                coreqs += s +" ";
+            }
+            String termsoffered = "";
+            for (int to : ci._termsOffered) {
+                termsoffered += Course.getTermNameByTermNo(to) + " ";
+            }
+            Course ci_new = 
+                    Course.modifyCourse(Integer.toString(i-1), 
+                                        ci._code, ci._name,
+                                        synonyms,
+                                        Integer.toString(ci._credits),
+                                        prereqs, coreqs,
+                                        termsoffered,
+                                        ci._scheduleDisplayName,
+                                        Integer.toString(ci._difficultyLevel),
+                                        Smax);          
+            // finally, update _curId
+            _curId = Course.getNumCourses();
+        }
     }
     
     
@@ -896,6 +945,36 @@ public class Course implements Comparable {
             return _code.compareTo(o.getCode());
         }
         throw new IllegalArgumentException("argument not a Course object");
+    }
+    
+    
+    /**
+     * extract the first letters before the number of the course, that signify
+     * the "discipline" the course belongs to (eg "ITC" or "PS"). Notice that 
+     * any appearances of the '/' character is ignored as LP-format names cannot
+     * have such characters.
+     * @param course String such as "ITC3234"
+     * @return String such as "ITC"
+     */
+    public static String getProgramCode(String course) {
+        StringBuffer sb = new StringBuffer("");
+        for (int i=0; i<course.length(); i++) {
+            final char c = course.charAt(i);
+            if (Character.isDigit(course.charAt(i))) break;
+            if (c=='/') continue;
+            sb.append(c);
+        }
+        return sb.toString();
+    }
+    
+    
+    /**
+     * reset all course data to prepare re-loading.
+     */
+    public static void reset() {
+        Course._allCoursesMap.clear();
+        Course._id2CrsMap.clear();
+        Course._curId = 0;
     }
 
     

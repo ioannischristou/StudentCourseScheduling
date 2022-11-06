@@ -224,6 +224,8 @@ public class MIPHandler {
         if (concentration==null || concentration.length()==0)
             throw new IllegalArgumentException("concentration area name "+
                                                "cannot be null or empty");
+        Set<String> discVarNames = new HashSet<>();  // needed when discipline
+                                                     // constraints are enforced
         // 0. update data structures: the passed and desired arguments are the 
         //    final word in this matter
         _passed.clear();
@@ -541,6 +543,11 @@ public class MIPHandler {
         for (int s=maxleterm+1; s<=Smax; s++) {
             for (String lecode : lecodes) {
                 Course lec = Course.getCourseByCode(lecode);
+                if (lec==null) {  // debug
+                    throw new IllegalArgumentException("course code "+lecode+
+                                                       " in LE group doesn't"+
+                                                       " exist...");
+                }
                 prob.append("c"+ccount+": "); ++ccount;
                 prob.append(" x_"+lec.getId()+"_"+s+" = 0\n");
             }
@@ -624,7 +631,13 @@ public class MIPHandler {
                 cons = " = "+numc;
             }
             catch (NumberFormatException e) {
-                // no-op
+                // ensure comparison operator and number have a space between
+                if (cons.matches("[<>]=[0-9]+")) {
+                    cons = cons.substring(0,2)+" "+cons.substring(2);
+                }
+                else if (cons.matches("[<>=][0-9]+")) {
+                    cons = cons.substring(0,1)+" "+cons.substring(1);
+                }
             }
             // cannot send string as is to the constraint as strict inequalities
             // "<" or ">" are not supported.
@@ -750,6 +763,13 @@ public class MIPHandler {
                         while (crss_it.hasNext()) {
                             String crscode = crss_it.next();
                             Course crs = Course.getCourseByCode(crscode);
+                            // debug
+                            if (crs==null) {
+                                System.err.print("In group "+cg.getGroupName());
+                                System.err.println(": Course code "+crscode+
+                                                   " not found");
+                                throw new IllegalStateException("course miss");
+                            }
                             int crs_id = crs.getId();
                             prob.append("x_"+crs_id);
                             if (crss_it.hasNext()) prob.append(" + ");
@@ -842,6 +862,61 @@ public class MIPHandler {
                     if (crss_it.hasNext()) prob.append(" + ");
                     else prob.append(" >= "+cgc+"\n");
                 }                
+            }
+            // #different disciplines constraint
+            final int mnd = cg.getMinNumDisciplines();
+            if (mnd>1) {
+                List<String> crss = cg.getGroupCodes();
+                HashMap<String, List<String>> discMap = new HashMap<>();
+                for (String cc : crss) {
+                    String disc_code = Course.getProgramCode(cc);
+                    discVarNames.add("w_"+disc_code);
+                    if (!discMap.containsKey(disc_code)) {
+                        discMap.put(disc_code, new ArrayList<String>());
+                    }
+                    List<String> disc_courses = discMap.get(disc_code);
+                    disc_courses.add(cc);
+                }
+                // now that we have all our disciplines, let's write the 
+                // constraints. Basically, we need one binary variable for each
+                // discipline that is one if there is at least one course from 
+                // that discipline, and zero otherwise, and we need to set the 
+                // sum of these binary variables to being greater than the value 
+                // mnd above.
+                Iterator<String> disc_it = discMap.keySet().iterator();
+                while (disc_it.hasNext()) {
+                    String disc = disc_it.next();
+                    prob.append("c"+ccount+": ");
+                    ++ccount;
+                    List<String> disc_crss = discMap.get(disc);
+                    final int n = disc_crss.size();
+                    for (int i=0; i<n; i++) {
+                        String crs = disc_crss.get(i);
+                        Course c = Course.getCourseByCode(crs);
+                        prob.append("x_"+c.getId()+" ");
+                        if (i<disc_crss.size()-1) prob.append(" + ");
+                        else prob.append(" - "+n+" w_"+disc+" <= 0\n");
+                    }
+                    prob.append("c"+ccount+": ");
+                    ++ccount;
+                    for (int i=0; i<n; i++) {
+                        String crs = disc_crss.get(i);
+                        Course c = Course.getCourseByCode(crs);
+                        prob.append("x_"+c.getId());
+                        if (i<disc_crss.size()-1) prob.append(" + ");
+                        else prob.append(" - "+" w_"+disc+" >= 0\n");
+                    }                    
+                }
+                // finally, the sum of the binary vars must be greater than mnd
+                prob.append("c"+ccount+": ");
+                ++ccount;
+                disc_it = discMap.keySet().iterator();
+                while (disc_it.hasNext()) {
+                    String d = disc_it.next();
+                    prob.append("w_"+d);
+                    if (disc_it.hasNext()) prob.append(" + ");
+                    else prob.append(" >= "+mnd+"\n");
+                }  
             }
         }
         // 2.10 tenth, the passed courses
@@ -1156,6 +1231,9 @@ public class MIPHandler {
                 prob.append("x_"+i+"_"+s+" ");
             }
             prob.append("\n");
+        }
+        for (String v : discVarNames) {
+            prob.append(v+" ");
         }
         // variable "Dx" and "G" can be continuous, so it's not declared at all
         // 2.19 finally, the END delimiter of all LP files

@@ -1,0 +1,15 @@
+Tc=120
+CmaxHonor=20
+Cmax=17
+ThesisCourseCode=PS4935
+SummerCmax=17
+SummerConcNMax=3
+SummerCmaxHonor=20
+Smax=40
+MaxLETerm=12
+FreshmanMaxNumCoursesPerTerm=3
+MinNumCourses4Sophomore=3
+ProgramCodes2Maximize=PS
+ProgramCode=PS
+AllowEdit=true
+CourseCSVFileHeader=#Code;Name;Synonyms;Credits;Pre-requisites;Co-requisites;Terms Offered;Schedule Name;Difficulty Level

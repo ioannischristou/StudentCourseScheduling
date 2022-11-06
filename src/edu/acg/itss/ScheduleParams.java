@@ -190,11 +190,21 @@ public class ScheduleParams {
     
     
     /**
+     * return the value of the property "AllowEdit", or false if not found in
+     * the properties file.
+     * @return boolean
+     */
+    public boolean getAllowEdit() {
+        return Boolean.parseBoolean(_props.getProperty("AllowEdit", "false"));
+    }
+    
+    
+    /**
      * returns the value of a parameter given its name.
      * @param paramName String
      * @return String may be null
      */
     public String getParameterValue(String paramName) {
         return _props.getProperty(paramName);
-    }
+    }    
 }

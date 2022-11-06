@@ -49,6 +49,12 @@ public class MainGUI extends javax.swing.JFrame {
     final static long _startTime = System.currentTimeMillis();
     
     /**
+     * number of OU courses registered for so far in the current academic year.
+     * Required if the next term is not the FALL term.
+     */
+    private int _passed_OU_in_cur_academic_year = -1;
+    
+    /**
      * model behind all courses maintains Course objects.
      */
     private final DefaultListModel _classListModel = new DefaultListModel();
@@ -147,7 +153,20 @@ public class MainGUI extends javax.swing.JFrame {
      * display in the GUI elements.
      */
     final void populateCourseListModels() {
+        // reset the course models as they are about to be (re-?)loaded
+        _itcClassListModel.clear();
+        _classListModel.clear();
+        _concAreasModel.clear();
+        
         _miphdlr.readProblemData(_studentName);
+        
+        // disable the Edit buttons if AllowEdit is not true
+        boolean allow_edit = _miphdlr.getScheduleParams().getAllowEdit();
+        if (!allow_edit) {
+            this._editCoursesMenuItem.setEnabled(false);
+            this._editCourseGroupsMenuItem.setEnabled(false);
+        }
+        
         String program_code = _miphdlr.getScheduleParams().getProgramCode();
         Iterator<String> codes = Course.getAllCodesIterator();
         while (codes.hasNext()) {
@@ -227,6 +246,8 @@ public class MainGUI extends javax.swing.JFrame {
         _saveScheduleMenuItem = new javax.swing.JMenuItem();
         _exitMenuItem = new javax.swing.JMenuItem();
         _editMenu = new javax.swing.JMenu();
+        _editCoursesMenuItem = new javax.swing.JMenuItem();
+        _editCourseGroupsMenuItem = new javax.swing.JMenuItem();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
@@ -239,15 +260,12 @@ public class MainGUI extends javax.swing.JFrame {
 
         _outputsArea.setEditable(false);
         _outputsArea.setColumns(20);
-        _outputsArea.setFont(new java.awt.Font("Segoe UI", 0, 12)); // NOI18N
         _outputsArea.setRows(5);
         _outputAreaScrollPane.setViewportView(_outputsArea);
 
         jScrollPane4.setHorizontalScrollBarPolicy(javax.swing.ScrollPaneConstants.HORIZONTAL_SCROLLBAR_ALWAYS);
         jScrollPane4.setVerticalScrollBarPolicy(javax.swing.ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
         jScrollPane4.setPreferredSize(_outputTextPane.getPreferredSize());
-
-        _outputTextPane.setFont(new java.awt.Font("Segoe UI", 0, 12)); // NOI18N
         jScrollPane4.setViewportView(_outputTextPane);
 
         jLabel5.setText("Schedule:");
@@ -503,6 +521,23 @@ public class MainGUI extends javax.swing.JFrame {
         _menuBar.add(_fileMenu);
 
         _editMenu.setText("Edit");
+
+        _editCoursesMenuItem.setText("Edit Courses");
+        _editCoursesMenuItem.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                _editCoursesMenuItemActionPerformed(evt);
+            }
+        });
+        _editMenu.add(_editCoursesMenuItem);
+
+        _editCourseGroupsMenuItem.setText("Edit Group Constraints");
+        _editCourseGroupsMenuItem.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                _editCourseGroupsMenuItemActionPerformed(evt);
+            }
+        });
+        _editMenu.add(_editCourseGroupsMenuItem);
+
         _menuBar.add(_editMenu);
 
         setJMenuBar(_menuBar);
@@ -552,12 +587,18 @@ public class MainGUI extends javax.swing.JFrame {
         // check if the first planning semester is a FALL term, and if it's not
         // then ask for the number of passed OU courses during the current 
         // academic year
-        int passed_OU_in_cur_academic_year = 0;
-        if (!Course.isFallTerm(1)) {
+        // int passed_OU_in_cur_academic_year = 0;
+        while (!Course.isFallTerm(1) && _passed_OU_in_cur_academic_year==-1) {
             String num_str = 
                     JOptionPane.showInputDialog("#OU courses already taken "+
                                                 "during current academic year");
-            passed_OU_in_cur_academic_year = Integer.parseInt(num_str);
+            try {
+             _passed_OU_in_cur_academic_year = Integer.parseInt(num_str);
+            }
+            catch (NumberFormatException e) {
+                JOptionPane.showMessageDialog(null, "Please enter "+
+                                                    "a non-negative integer");
+            }
         }
         this.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
         // first, get the passed courses and the desired courses from the JList
@@ -621,7 +662,7 @@ public class MainGUI extends javax.swing.JFrame {
                                                s1off, s2off, stoff, 
                                                _numCoursesPerTerm2StrMap, 
                                                passed_codes, 
-                                               passed_OU_in_cur_academic_year,
+                                               _passed_OU_in_cur_academic_year,
                                                desired_codes, 
                                                concentration_name,
                                                1000, 100, 1, 10);
@@ -633,7 +674,7 @@ public class MainGUI extends javax.swing.JFrame {
                                                s1off, s2off, stoff, 
                                                _numCoursesPerTerm2StrMap,
                                                passed_codes, 
-                                               passed_OU_in_cur_academic_year,
+                                               _passed_OU_in_cur_academic_year,
                                                desired_codes, 
                                                concentration_name,
                                                1, 100, 10, 1000);            
@@ -1008,6 +1049,65 @@ public class MainGUI extends javax.swing.JFrame {
 
     
     /**
+     * invoke the <CODE>CourseEditor</CODE> to edit courses, and then re-load
+     * the edited courses.
+     * @param evt 
+     */
+    private void _editCoursesMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__editCoursesMenuItemActionPerformed
+        try {
+            this.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+            Runtime rt = Runtime.getRuntime();
+            Process p = rt.exec("java -cp ./dist/ITStudentCourseScheduling.jar"+
+                                " edu.acg.itss.CourseEditor "+
+                                MainGUI._dir2Files);
+            int retval = p.waitFor();  // wait until the CourseEditor terminates
+            if (retval==0) {
+                Course.reset();
+                populateCourseListModels();
+            }
+            else throw new IllegalStateException("process failed");
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+            JOptionPane.showConfirmDialog(null, "CourseEditor failed to run.");
+        }
+        finally {
+            this.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));            
+        }
+    }//GEN-LAST:event__editCoursesMenuItemActionPerformed
+
+    
+    /**
+     * invoke the <CODE>CourseGroupEditor</CODE> to edit course groups (that 
+     * specify constraints for the study plan) and re-load the edited groups.
+     * @param evt 
+     */
+    private void _editCourseGroupsMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__editCourseGroupsMenuItemActionPerformed
+        try {
+            this.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+            Runtime rt = Runtime.getRuntime();
+            Process p = rt.exec("java -cp ./dist/ITStudentCourseScheduling.jar"+
+                                " edu.acg.itss.CourseGroupEditor "+
+                                MainGUI._dir2Files);
+            int retval = p.waitFor();  // wait until the CourseEditor terminates
+            if (retval==0) {
+                Course.reset();
+                CourseGroup.reset();
+                populateCourseListModels();
+            }
+            else throw new IllegalStateException("process failed");
+        }
+        catch (Exception e) {
+            e.printStackTrace();
+            JOptionPane.showConfirmDialog(null, "CourseGroupEditor failed.");
+        }
+        finally {
+            this.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));            
+        }
+    }//GEN-LAST:event__editCourseGroupsMenuItemActionPerformed
+
+    
+    /**
      * main class to start the ACG SCORER app.
      * @param args the command line arguments must include as first argument
      * the name of the directory relative to the current directory where all
@@ -1056,6 +1156,8 @@ public class MainGUI extends javax.swing.JFrame {
     private javax.swing.JTextField _curDateTxtFld;
     private javax.swing.JList<String> _desiredCoursesList;
     private javax.swing.JRadioButton _diffiBalanceBtn;
+    private javax.swing.JMenuItem _editCourseGroupsMenuItem;
+    private javax.swing.JMenuItem _editCoursesMenuItem;
     private javax.swing.JMenu _editMenu;
     private javax.swing.JMenuItem _exitMenuItem;
     private javax.swing.JMenu _fileMenu;

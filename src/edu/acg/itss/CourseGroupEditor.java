@@ -171,6 +171,7 @@ public class CourseGroupEditor extends javax.swing.JFrame {
         jLabel6.setText("#Credits Min Value:");
 
         _minCreditsFld.setText("0");
+        _minCreditsFld.setToolTipText("A negative number indicates that the abs value indicates minimum #disciplines to be selected from group");
 
         jLabel7.setText("Existing Groups:");
 

@@ -11,4 +11,5 @@ FreshmanMaxNumCoursesPerTerm=3
 MinNumCourses4Sophomore=3
 ProgramCodes2Maximize=ITC\\MG-courses;MA\\LE-core-stat
 ProgramCode=ITC
+AllowEdit=true
 CourseCSVFileHeader=#Code;Name;Synonyms;Credits;Pre-requisites;Co-requisites;Terms Offered;Schedule Name;Difficulty Level
