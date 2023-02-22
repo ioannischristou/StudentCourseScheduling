@@ -297,6 +297,7 @@ public class MIPHandler {
         prob.append("\\ 1. DL constraints\n");
         for (int s=1; s<=Smax; s++) {
             prob.append("c").append(ccount).append(": ");
+            ++ccount;
             for (int i=0; i<N; i++) {
                 Course ci = Course.getCourseById(i);
                 final int dli = ci.getDifficultyLevel();
@@ -1136,12 +1137,15 @@ public class MIPHandler {
         // courses has the meaning that it is the maximum distance in terms
         // between ci and cj, so that if student takes both courses and 
         // takes ci in term t, they must take course cj by t + cn
+        // In case the student has already taken course ci (in term t=0),
+        // the constraint becomes simply inactive.
         prob.append("\\ soft-order precedence constraints\n");
         gnamesit = CourseGroup.getCourseGroupNameIterator();
         while (gnamesit.hasNext()) {
             String gname = gnamesit.next();
             CourseGroup cg = CourseGroup.getCourseGroupByName(gname);
             if (cg.isSoftOrderPrecedenceConstraint()) {
+                prob.append("\\ soft-order constraint: "+gname+"\n");
                 List<String> codes = cg.getGroupCodes();
                 final int cn = cg.getMinNumCoursesReqd();
                 Course ci = Course.getCourseByCode(codes.get(0));
@@ -1153,7 +1157,8 @@ public class MIPHandler {
                                          // two courses
                     prob.append("c"+ccount+": "); ++ccount;
                     prob.append("x_"+cj.getId()+"_"+s+" ");
-                    for (int t=s-cn2; t<=s-1; t++) {
+                    final int s0 = Math.max(0, s-cn2);
+                    for (int t=s0; t<=s-1; t++) {
                         prob.append(" - x_"+ci.getId()+"_"+t);
                     }
                     prob.append(" + x_"+ci.getId());
