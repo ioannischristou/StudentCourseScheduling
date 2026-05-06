@@ -1,1 +1,3 @@
-/lib/gurobi.jar
+lib/gurobi.jar
+bin/SCIPOptSuite800/
+*.mkv

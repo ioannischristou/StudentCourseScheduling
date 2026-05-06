@@ -13,14 +13,29 @@ import javax.swing.JOptionPane;
  * the cmd-line of this program. The program presents at any time a form for a 
  * particular course details. Any changes the user makes to this form won't be 
  * saved in memory unless the user presses the "Save Course Changes" button. 
+ * If the user tries to delete a course that is pre-requisite for other courses,
+ * the system will refuse to do the deletion until the dependent classes have
+ * been deleted first.
  * Even so, no changes will be written to disk until the user presses the 
  * "Save to Disk" button, which essentially "commits" all changes made to 
- * courses so far.
+ * courses so far. The only exception so far are: 
+ * <ul>
+ * <li>when the user modifies a course and changes its code (e.g. from "ITC4140"
+ * to "ITC4040"); in this case, as soon as the user presses the 
+ * "Save Course Changes" button, any mention of the old course code to the .grp 
+ * files describing the group constraints will be replaced by the new code. Same 
+ * for the "cls.csv" file. The program closes immediately after!
+ * <li>20260324: when deleting a course that also appears in at least one
+ * group constraint, the "cls.csv" and all relevant .grp files are immediately
+ * updated and the program closes, in the same way as above.
+ * </ul>
+ * <p>Finally, the "terms offered" reflects what is on the file and only changes
+ * if the user modifies this data in the form.
  * @author itc
  */
 public class CourseEditor extends javax.swing.JFrame {
 
-    private static String _dir2Files = null;
+    private static String _dir2Files = null; 
     
     private ScheduleParams _params;
     
@@ -32,11 +47,77 @@ public class CourseEditor extends javax.swing.JFrame {
         initComponents();
         readData();
     }
+    
+    
+    /**
+     * creates a <CODE>CourseEditor</CODE> instance so as to use the 
+     * <CODE>_saveAllCrssBtnActionPerformed(event)</CODE> method to over-write
+     * the "cls.csv" file contents, as well as every ".grp" file, when changing
+     * a course code for an existing class.
+     * @param flag 
+     */
+    public CourseEditor(boolean flag) {
+        _params = new ScheduleParams(_dir2Files+"/params.props");
+    }
+    
+    
+    /** 
+     * the method is called by <CODE>Course.modifyCourse()</CODE> that updates
+     * all relevant files about a change of a course's code.
+     * @param oldcode String
+     * @param newcode String
+     */
+    void saveCoursesToDisk(String oldcode, String newcode) {
+        // correctly updates cls.csv
+        // rename the "cls.csv" file to "cls.csv.bak" and overwrite "cls.csv"
+        // with the new data
+        try {
+            // make back-up file
+            File src = new File(_dir2Files+"/cls.csv");
+            File dest = new File(_dir2Files+"/cls.csv.bak");
+            if (dest.exists()) dest.delete();
+            Files.copy(src.toPath(), dest.toPath());
+            // now overwrite main file
+            final int Smax = _params.getSmax();
+            PrintWriter pw = 
+                    new PrintWriter(new FileWriter(_dir2Files+"/cls.csv"));
+            // first print the header line so we know what each column is about
+            pw.println("#"+_params.getCourseCSVFileHeader());
+            final int last_id = Course.getLastId();
+            for (int i=0; i<=last_id; i++) {
+                Course ci = Course.getCourseById(i);
+                if (ci==null) continue;  // course was deleted
+                String crs_details = ci.getFullDetailsString(Smax);
+                if (!ci.getCode().equals(newcode)) {
+                    // replace all appearances of oldcode with newcode
+                    crs_details = crs_details.replace(oldcode, newcode);
+                }
+                pw.println(crs_details);
+            }
+            pw.flush();
+            pw.close();
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 
     
     /**
+     * auxiliary method needed by <CODE>Course</CODE> when it needs to save data
+     * for a course that changes name.
+     * @return String
+     */
+    public static String getDir2Files() {
+        return _dir2Files;
+    }
+
+        
+    /**
      * reads data from the "cls.csv" and "params.props" files living in user
-     * specified directories, to populate the <CODE>Course</CODE> class.
+     * specified directories, to populate the <CODE>Course</CODE> class. It also
+     * reads all course-groups as it needs to know relevant information when it
+     * edits courses.
      */
     private void readData() {
         LocalDate now = LocalDate.now();
@@ -68,6 +149,14 @@ public class CourseEditor extends javax.swing.JFrame {
             this._saveAllCrssBtn.setEnabled(false);
             this._addNewCrsBtn.setEnabled(true);
         }
+        // read course groups data
+        File cur_dir = new File(_dir2Files);
+        File[] cur_files = cur_dir.listFiles();
+        for (File f : cur_files) {
+            if (f.isFile() && f.getName().endsWith("grp")) {
+                CourseGroup.readCourseGroup(f.getAbsolutePath());
+            }
+        }
     }
 
     
@@ -76,6 +165,7 @@ public class CourseEditor extends javax.swing.JFrame {
      * @param c Course
      */
     private void populateForm(Course c) {
+        System.err.println("populateForm() called w/ Course "+c.getCode());
         this._idLbl.setText(Integer.toString(c.getId()));
         this._codeFld.setText(c.getCode());
         String aka = "";
@@ -107,12 +197,15 @@ public class CourseEditor extends javax.swing.JFrame {
         this._coreqsFld.setText(cstr.trim());
         this._displayNameFld.setText(c.getScheduleDisplayName());
         String to = "";
+        /* itc20260324: why not use c._toff
         List<Integer> tolst = c.getTermsOffered(_params.getSmax());
         for (Integer t : tolst) {
             String tstr = Course.getTermNameByTermNo(t);
             to += tstr + " ";
         }
         this._termsOfferedFld.setText(to.trim());    
+        */
+        this._termsOfferedFld.setText(c.getTermsOffered());
         if (c.getId()==0) this._previousCrsBtn.setEnabled(false);
         else this._previousCrsBtn.setEnabled(true);
         if (c.getId()==Course.getNumCourses()-1) 
@@ -516,14 +609,41 @@ public class CourseEditor extends javax.swing.JFrame {
     
     /**
      * notice that when a Course is deleted, any CourseGroup objects that have
-     * a reference to its code need to be updated.
+     * a reference to its code need to be updated. For this reason, in this 
+     * action, we modify both the cls.csv and all relevant .grp files and then
+     * immediately exit the program.
      * @param evt 
      */
     private void _deleteCrsBtnActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__deleteCrsBtnActionPerformed
+        System.err.println("_deleteBtn...(): called");  // debug
         String del_id_str = this._idLbl.getText();
         final int tid = Integer.parseInt(del_id_str);
         Course cdel = Course.getCourseById(tid);
-        Course.deleteCourse(del_id_str, _params.getSmax());
+        System.err.println("course to delete is: "+cdel.getCode());  // debug
+        // check out if this course is pre-requisite for any other courses
+        // in which case, abort the delete until the other courses are deleted
+        // first        
+        String ccode = this._codeFld.getText();
+        Iterator<String> ccodes = Course.getAllCodesIterator();
+        Set<Course> reqs = new TreeSet<>();
+        while (ccodes.hasNext()) {
+            String cc_str = ccodes.next();
+            if (cc_str.equals(ccode.trim())) continue;
+            Course c = Course.getCourseByCode(cc_str);
+            if (c.requiresCourse(ccode)) reqs.add(c);
+        }
+        if (reqs.size()>0) {
+            String result = "Courses Requiring "+ccode+":\n";
+            int i=0;
+            for (Course c : reqs) {
+                result += c.getCode()+" "+c.getName();
+                if (++i % 2 == 0) result += "\n";
+                else result += " , ";
+            }
+            result += "\nDELETE ALL ABOVE COURSES FIRST!";
+            JOptionPane.showConfirmDialog(null, result);
+            return;
+        }        
         // check out what course groups reference this course, and alert user
         String ref_groups = "";
         Iterator<String> cgnamesit = CourseGroup.getCourseGroupNameIterator();
@@ -533,10 +653,51 @@ public class CourseEditor extends javax.swing.JFrame {
             Set<String> cnames = cg.getAllGroupCodes();
             if (cnames.contains(cdel.getCode())) ref_groups+= gname + " ";
         }
-        if (ref_groups.length()>0) {
-            JOptionPane.showInputDialog("Course to be deleted is referenced by"+
-                                        " following groups: \n"+ref_groups);
-        }
+        if (ref_groups.length()>0) {  // will change cls.csv AND .grp files NOW
+            System.err.println("_deleteBtn...(): must change files now...");  // debug
+            Object[] pos = {"OK", "Cancel"};
+            Object answer = JOptionPane.showOptionDialog(
+                                        null,
+                                        "Course to be deleted is referenced by"+
+                                        " following groups: \n"+ref_groups+
+                                        "\nCourse will be deleted from above "+
+                                        "groups as well: files on disk will be"+
+                                        " AFFECTED IMMEDIATELY",
+                                        "WARNING",
+                                        JOptionPane.DEFAULT_OPTION, 
+                                        JOptionPane.WARNING_MESSAGE,
+                                        null,
+                                        pos, pos[0]);
+            String result = (String) answer;
+            if (!"OK".equals(result)) return;
+            // first, remove the course code from all course groups found in the 
+            // .grp files in _dir2Files
+            String dir2Files = CourseEditor.getDir2Files();
+            File cur_dir = new File(dir2Files);
+            File[] cur_files = cur_dir.listFiles();        
+            for (File f : cur_files) {
+                if (f.isFile() && f.getName().endsWith("grp")) {
+                    try {
+                        Course.replaceStringInFile(f.getAbsolutePath(), 
+                                                   cdel.getCode(), "");
+                    }
+                    catch (IOException e) {  // cannot get here normally
+                        e.printStackTrace();
+                    }
+                }
+            }
+            // finally, remove the course code from cls.csv and exit:
+            // update the Course data structures and call "Save All Courses"
+            // functionality
+            Course.deleteCourse(del_id_str, _params.getSmax());
+            this._saveAllCrssBtnActionPerformed(evt);
+            int ans = JOptionPane.showConfirmDialog(null, "Needs restart; " +
+                                      "please close all SCORER programs and " +
+                                      "restart them again.");
+            System.exit(-1);  // return -1 to indicate to MainGUI to close too!
+        }  // course appears in course groups
+        System.err.println("_deleteBtn...(): will call Course.deleteCourse() and update form");  // debug
+        Course.deleteCourse(del_id_str, _params.getSmax());
         // go to the previous course
         int id = tid;
         while (--id>=0) {
@@ -632,7 +793,7 @@ public class CourseEditor extends javax.swing.JFrame {
 
     
     /**
-     * invoke without any command-line arguments.
+     * invoke the <CODE>CourseEditor</CODE>.
      * @param args the command line arguments the first argument must be the 
      * name of the directory relative to the root of the app where the files 
      * to check ("cls.csv", "params.props") are located.

@@ -1,0 +1,25 @@
+_desiredCoursesList.addMouseListener(new MouseAdapter() {
+    @Override
+    public void mousePressed(MouseEvent e) {
+        if (SwingUtilities.isRightMouseButton(e)) {
+            int index = _desiredCoursesList.locationToIndex(e.getPoint());
+            if (index != -1) {
+                // Preserve existing selections
+                _desiredCoursesList.addSelectionInterval(index, index);
+
+                if (e.isControlDown()) {
+                    CodeNameAllowedTerms item = _itcClassListModel.getElementAt(index);
+
+                    String newValue = JOptionPane.showInputDialog(_desiredCoursesList,
+                            "Enter desired term (or "-") for " + item.getCodeName() + ":",
+                            "Edit Attribute", JOptionPane.PLAIN_MESSAGE);
+
+                    if (newValue != null && !newValue.trim().isEmpty()) {
+                        item.allowedTerms = newValue;  // this can be dangerous
+                        _itcClassListModel.setElementAt(item, index);
+                    }
+                }
+            }
+        }
+    }
+});

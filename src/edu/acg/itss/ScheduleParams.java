@@ -98,14 +98,41 @@ public class ScheduleParams {
     public int getSummerConcNMax() {
         return Integer.parseInt(_props.getProperty("SummerConcNMax"));
     }
-    
-    
+
+
     /**
-     * return the thesis code of the program.
+     * return the maximum number of courses a student may be attending at the 
+     * same time during the summer seasons (S1, S2) NOT including the summer
+     * term (ST).
+     * @return int  // if property not found, returns "2"
+     */
+    public int getSummer12ConcNMax() {
+        final String default_val = "2";
+        return Integer.parseInt(_props.getProperty("Summer12ConcNMax", 
+                                                   default_val));
+    }
+
+
+    /**
+     * return the (unique) thesis code of the program.
      * @return String such as "ITC4979" or "ITC4949" (for the CYN program)
      */
     public String getThesisCode() {
         return _props.getProperty("ThesisCourseCode");
+    }
+    
+    
+    /**
+     * return the thesis codes of the program.
+     * @return Set&lt;String&gt; with strings such as "ITC4979" or "ITC4949"
+     */
+    public Set<String> getThesisCodes() {
+        Set<String> result = new HashSet<>();
+        String codestr = _props.getProperty("ThesisCourseCodes");
+        if (codestr==null) return result;  // empty set
+        String[] codes = codestr.split(";");
+        for (String t : codes) result.add(t);
+        return result;
     }
     
     
@@ -152,6 +179,28 @@ public class ScheduleParams {
             if (pc2.length>1) exc = pc2[1];
             ProgramCodeStruct pcodestruct = new ProgramCodeStruct(code, exc);
             ret.add(pcodestruct);
+        }
+        return ret;
+    }
+    
+    
+    /**
+     * return the set of course codes (eg "PS4935") for which there is a 
+     * "soft-constraint" that the plan should have them in the end. The easiest
+     * way to do this is by adding the time-slotted corresponding binary vars 
+     * in the objective function with coefficients that get smaller as the
+     * term gets larger. Soft-order constraints can then help with the order 
+     * between those courses (if pre-requisites are not enough).
+     * @return Set&lt;String&gt;  // cannot be null
+     */
+    public Set<String> getCourses2Plan4LastTerms() {
+        Set<String> ret = new HashSet<>();
+        String program_codes_str = _props.getProperty("LastTermCodes");
+        if (program_codes_str==null || program_codes_str.length()==0)
+            return ret;
+        String[] pcs = program_codes_str.split(";");
+        for (String pc : pcs) {
+            ret.add(pc);
         }
         return ret;
     }
@@ -207,4 +256,33 @@ public class ScheduleParams {
     public String getParameterValue(String paramName) {
         return _props.getProperty(paramName);
     }    
+    
+    
+    /**
+     * returns true if and only if the MIP solver to use is GUROBI. The check
+     * done is whether the "SCIP_path" key is set in the params file.
+     * @return boolean
+     */
+    public boolean getUseGUROBI() {
+        return _props.getProperty("SCIP_path")==null;
+    }
+    
+    
+    /**
+     * returns true if and only if the MIP solver to use is SCIP. The check done
+     * is whether the "SCIP_path" key is set in the params file
+     * @return boolean
+     */
+    public boolean getUseSCIP() {
+        return _props.getProperty("SCIP_path")!=null;        
+    }
+    
+    
+    /**
+     * return the "SCIP_path" property value.
+     * @return String
+     */
+    public String getSCIPPath() {
+        return _props.getProperty("SCIP_path");
+    }
 }

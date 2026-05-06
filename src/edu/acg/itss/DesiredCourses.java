@@ -130,7 +130,7 @@ public class DesiredCourses {
     
     
     /**
-     * get the allowed terms for the given course, in terms of the term numbers
+     * get the preferred terms for the given course in terms of the term numbers
      * from the current date (for example {1, 2, 3}).
      * @param code String
      * @param cur_term int must be in [0, 1, ...Smax] with 0 indicating there is
@@ -138,12 +138,12 @@ public class DesiredCourses {
      * @param Smax int
      * @return Set&lt;Integer&gt;
      */
-    public Set<Integer> getAllowedTerms4Course(String code, 
-                                               int cur_term, 
-                                               int Smax) {
-        Set<String> allowed_terms = _desiredCourseCodes.get(code);
+    public Set<Integer> getPreferredTerms4Course(String code, 
+                                                 int cur_term, 
+                                                 int Smax) {
+        Set<String> preferred_terms = _desiredCourseCodes.get(code);
         Set<Integer> res = new HashSet<>();
-        for (String t : allowed_terms) {
+        for (String t : preferred_terms) {
             if ("allterms".equals(t)) {
                 for (int i=1; i<=Smax; i++) res.add(i);
                 return res;
@@ -153,6 +153,36 @@ public class DesiredCourses {
                     if (s!=cur_term) res.add(s);
                 }
                 continue;
+            }
+            else if ("everyfall".equals(t)) {
+                for (int s=1; s<=Smax; s++) {
+                    if (Course.isFallTerm(s)) res.add(s);
+                }
+                continue;                
+            }
+            else if ("everyspring".equals(t)) {
+                for (int s=1; s<=Smax; s++) {
+                    if (Course.isSpringTerm(s)) res.add(s);
+                }
+                continue;                
+            }
+            else if ("everysummer1".equals(t)) {
+                for (int s=1; s<=Smax; s++) {
+                    if (Course.isSummer1Term(s)) res.add(s);
+                }
+                continue;                
+            }
+            else if ("everysummer2".equals(t)) {
+                for (int s=1; s<=Smax; s++) {
+                    if (Course.isSummer2Term(s)) res.add(s);
+                }
+                continue;                
+            }
+            else if ("everysummerterm".equals(t)) {
+                for (int s=1; s<=Smax; s++) {
+                    if (Course.isSummerTerm(s)) res.add(s);
+                }
+                continue;                
             }
             int tno = Course.getTermNo(t);
             res.add(tno);
@@ -168,4 +198,44 @@ public class DesiredCourses {
     public Iterator<String> getDesiredCourseCodesIterator() {
         return _desiredCourseCodes.keySet().iterator();
     }        
+    
+    
+    /**
+     * return the number of desired courses that have specified only the given
+     * term as acceptable for when to take the course.
+     * @param term String e.g. "FA2022"
+     * @return int  // must be non-negative
+     */
+    public int getNumDesiredCoursesForTerm(String term) {
+        int res = 0;
+        for (String code : this._desiredCourseCodes.keySet()) {
+            Set<String> terms = this._desiredCourseCodes.get(code);
+            if (terms.size()!=1) continue;
+            Iterator<String> itt = terms.iterator();
+            if (term.equals(itt.next())) ++res;
+        }
+        return res;
+    }
+    
+    
+    /**
+     * create and return a <CODE>CodeNameAllowedTerms</CODE> object, useful for
+     * displaying in the GUI of desired courses.
+     * @param code String
+     * @param Smax int
+     * @return CodeNameAllowedTerms  // may be null
+     */
+    public CodeNameAllowedTerms getCodeNameAllowedTerms(String code, int Smax) {
+        if (!contains(code)) return null;
+        Course c = Course.getCourseByCode(code);
+        String title = c.getName();
+        String at = "";
+        Set<String> terms = _desiredCourseCodes.get(code);
+        for (String t : terms) at += t+ " ";
+        CodeNameAllowedTerms cnat = new CodeNameAllowedTerms(code, title, at);
+        if (!CodeNameAllowedTerms.prefferedTermsAllowed(code, at, 0, Smax)) {
+            cnat = new CodeNameAllowedTerms(code, title, "-");
+        }
+        return cnat;
+    }
 }

@@ -159,7 +159,7 @@
                   </Group>
                   <EmptySpace min="-2" max="-2" attributes="0"/>
                   <Group type="103" groupAlignment="0" attributes="0">
-                      <Component id="jScrollPane4" pref="286" max="32767" attributes="0"/>
+                      <Component id="jScrollPane4" pref="284" max="32767" attributes="0"/>
                       <Component id="_outputAreaScrollPane" max="32767" attributes="0"/>
                   </Group>
                   <EmptySpace min="-2" max="-2" attributes="0"/>
@@ -268,19 +268,21 @@
                                   </Group>
                               </Group>
                               <Group type="102" attributes="0">
+                                  <Component id="jLabel1" min="-2" max="-2" attributes="0"/>
+                                  <EmptySpace min="0" pref="0" max="32767" attributes="0"/>
+                              </Group>
+                              <Group type="102" alignment="0" attributes="0">
                                   <Group type="103" groupAlignment="0" attributes="0">
-                                      <Component id="jLabel1" min="-2" max="-2" attributes="0"/>
-                                      <Group type="102" alignment="0" attributes="0">
-                                          <Group type="103" groupAlignment="0" attributes="0">
-                                              <Component id="_summerSemestersOffChkBox" alignment="0" min="-2" max="-2" attributes="0"/>
-                                              <Group type="103" alignment="1" groupAlignment="0" max="-2" attributes="0">
-                                                  <Component id="_stChkBox" alignment="1" max="32767" attributes="0"/>
-                                                  <Component id="_s2ChkBox" alignment="1" max="32767" attributes="0"/>
-                                                  <Component id="_s1ChkBox" alignment="1" min="-2" max="-2" attributes="0"/>
-                                              </Group>
-                                              <Component id="_honorStudentChkBox" alignment="0" min="-2" max="-2" attributes="0"/>
-                                          </Group>
-                                          <EmptySpace type="separate" max="-2" attributes="0"/>
+                                      <Component id="_summerSemestersOffChkBox" alignment="0" min="-2" max="-2" attributes="0"/>
+                                      <Group type="103" alignment="1" groupAlignment="0" max="-2" attributes="0">
+                                          <Component id="_stChkBox" alignment="1" max="32767" attributes="0"/>
+                                          <Component id="_s2ChkBox" alignment="1" max="32767" attributes="0"/>
+                                          <Component id="_s1ChkBox" alignment="1" min="-2" max="-2" attributes="0"/>
+                                      </Group>
+                                      <Component id="_honorStudentChkBox" alignment="0" min="-2" max="-2" attributes="0"/>
+                                  </Group>
+                                  <Group type="103" groupAlignment="0" attributes="0">
+                                      <Group type="102" attributes="0">
                                           <Group type="103" groupAlignment="1" attributes="0">
                                               <Component id="jLabel7" min="-2" max="-2" attributes="0"/>
                                               <Component id="jLabel4" min="-2" max="-2" attributes="0"/>
@@ -290,9 +292,13 @@
                                               <Component id="_maxNumCrsPerSemFld" min="-2" pref="56" max="-2" attributes="0"/>
                                               <Component id="_maxNumCoursesDuringThesisFld" min="-2" pref="56" max="-2" attributes="0"/>
                                           </Group>
+                                          <EmptySpace min="0" pref="0" max="32767" attributes="0"/>
+                                      </Group>
+                                      <Group type="102" alignment="1" attributes="0">
+                                          <EmptySpace min="0" pref="0" max="32767" attributes="0"/>
+                                          <Component id="_feasCheckBtn" min="-2" max="-2" attributes="0"/>
                                       </Group>
                                   </Group>
-                                  <EmptySpace min="0" pref="0" max="32767" attributes="0"/>
                               </Group>
                           </Group>
                       </Group>
@@ -341,7 +347,10 @@
                           <EmptySpace max="-2" attributes="0"/>
                           <Component id="_s2ChkBox" min="-2" max="-2" attributes="0"/>
                           <EmptySpace max="-2" attributes="0"/>
-                          <Component id="_stChkBox" min="-2" max="-2" attributes="0"/>
+                          <Group type="103" groupAlignment="3" attributes="0">
+                              <Component id="_stChkBox" alignment="3" min="-2" max="-2" attributes="0"/>
+                              <Component id="_feasCheckBtn" alignment="3" min="-2" max="-2" attributes="0"/>
+                          </Group>
                           <EmptySpace pref="19" max="32767" attributes="0"/>
                           <Group type="103" groupAlignment="3" attributes="0">
                               <Component id="_runBtn" alignment="3" min="-2" max="-2" attributes="0"/>
@@ -378,7 +387,7 @@
                 <Property name="model" type="javax.swing.ListModel" editor="org.netbeans.modules.form.RADConnectionPropertyEditor">
                   <Connection code="_classListModel" type="code"/>
                 </Property>
-                <Property name="toolTipText" type="java.lang.String" value="select all courses passed already"/>
+                <Property name="toolTipText" type="java.lang.String" value="select all courses passed already (use Ctl-Left Click for multiple selections)"/>
               </Properties>
               <AuxValues>
                 <AuxValue name="JavaCodeGenerator_TypeParameters" type="java.lang.String" value="&lt;String&gt;"/>
@@ -442,6 +451,7 @@
                 <Property name="model" type="javax.swing.ListModel" editor="org.netbeans.modules.form.RADConnectionPropertyEditor">
                   <Connection code="_itcClassListModel" type="code"/>
                 </Property>
+                <Property name="toolTipText" type="java.lang.String" value="Use R-Click for multiple selection; use Ctl-R-Click to specify term to take course"/>
               </Properties>
               <AuxValues>
                 <AuxValue name="JavaCodeGenerator_TypeParameters" type="java.lang.String" value="&lt;String&gt;"/>
@@ -453,6 +463,9 @@
           <Properties>
             <Property name="text" type="java.lang.String" value="I am an honor student"/>
           </Properties>
+          <Events>
+            <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="_honorStudentChkBoxActionPerformed"/>
+          </Events>
         </Component>
         <Component class="javax.swing.JRadioButton" name="_shortestComplTimeBtn">
           <Properties>
@@ -476,7 +489,7 @@
         </Component>
         <Component class="javax.swing.JRadioButton" name="_summerSemestersOffChkBox">
           <Properties>
-            <Property name="text" type="java.lang.String" value="Summer Semesters Off"/>
+            <Property name="text" type="java.lang.String" value="Summer Periods Off"/>
           </Properties>
           <Events>
             <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="_summerSemestersOffChkBoxActionPerformed"/>
@@ -532,6 +545,15 @@
           <Properties>
             <Property name="text" type="java.lang.String" value="1"/>
           </Properties>
+        </Component>
+        <Component class="javax.swing.JButton" name="_feasCheckBtn">
+          <Properties>
+            <Property name="text" type="java.lang.String" value="Feas. Chk"/>
+            <Property name="toolTipText" type="java.lang.String" value="Check whether desired courses lead to feasible schedule, when next term only contains courses designated for then"/>
+          </Properties>
+          <Events>
+            <EventHandler event="actionPerformed" listener="java.awt.event.ActionListener" parameters="java.awt.event.ActionEvent" handler="_feasCheckBtnActionPerformed"/>
+          </Events>
         </Component>
       </SubComponents>
     </Container>

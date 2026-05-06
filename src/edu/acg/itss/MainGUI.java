@@ -2,8 +2,7 @@ package edu.acg.itss;
 
 import gurobi.GRBException;
 import java.awt.Cursor;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
+import java.awt.event.*;
 import javax.swing.*;
 import javax.swing.text.*;
 import java.io.*;
@@ -55,6 +54,12 @@ public class MainGUI extends javax.swing.JFrame {
     private int _passed_OU_in_cur_academic_year = -1;
     
     /**
+     * set to true when user clicks on the _feasCheckBtn, and only remains true
+     * while the system performs the feasibility check.
+     */
+    private boolean _feasChkAsked = false;
+    
+    /**
      * model behind all courses maintains Course objects.
      */
     private final DefaultListModel _classListModel = new DefaultListModel();
@@ -101,50 +106,27 @@ public class MainGUI extends javax.swing.JFrame {
     public MainGUI() {
         // first, ask for the name of the student for whom the plan will be 
         // built.
-        _studentName = JOptionPane.showInputDialog("Enter Student Name:");
+        _studentName = JOptionPane.showInputDialog("Enter Student ID (or name):");
+        // replace spaces with underscores to avoid issues with command-line
+        _studentName = _studentName.replace(" ", "_");
         // next call technically "escapes constructor" but seems to be OK
         this.setTitle("ACG SCORER for "+_studentName);
         populateCourseListModels();
         initComponents();
-        // show passed courses if there are any
-        PassedCourses p = _miphdlr.getPassedCourses();
-        List<Integer> l = new ArrayList<>();
-        for (int i=0; i<_classListModel.getSize(); i++) {
-            Course ci = (Course) _classListModel.elementAt(i);
-            if (p.contains(ci.getCode())) {
-                l.add(i);
-            }
-        }
-        if (l.size()>0) {
-            int[] larr = new int[l.size()];
-            int i=0;
-            for (Integer ii : l) larr[i++] = ii;
-            _passedCoursesList.setSelectedIndices(larr);
-        }
-        // show desired courses if there are any
-        DesiredCourses d = _miphdlr.getDesiredCourses();
-        l.clear();
-        for (int i=0; i<_itcClassListModel.getSize(); i++) {
-            CodeNameAllowedTerms cnat = 
-                    (CodeNameAllowedTerms) _itcClassListModel.elementAt(i);
-            if (d.contains(cnat._code)) {
-                l.add(i);
-            }
-        }
-        if (l.size()>0) {
-            int[] larr = new int[l.size()];
-            int i=0;
-            for (Integer ii : l) larr[i++] = ii;
-            _desiredCoursesList.setSelectedIndices(larr);
-        }
         // write current date in txtfld
         LocalDate now = LocalDate.now();
         int cur_day = now.getDayOfMonth();
         int cur_mon = now.getMonthValue();
         int cur_year = now.getYear();
+        CurrentDate._curDay = cur_day;
+        CurrentDate._curMonth = cur_mon;
+        CurrentDate._curYear = cur_year;
         this._curDateTxtFld.setText(Integer.toString(cur_day)+"/"+
                                     Integer.toString(cur_mon)+"/"+
                                     Integer.toString(cur_year));
+        // load passed and desired courses if there are any
+        _loadMenuItemActionPerformed(null);
+        enableRightClick4DesiredCoursesList();
     }
     
     
@@ -182,6 +164,92 @@ public class MainGUI extends javax.swing.JFrame {
         }
         Set<String> conc_areas = CourseGroup.getAllConcentrationAreas();
         for (String name: conc_areas) this._concAreasModel.addElement(name);
+        
+        // check if the first planning semester is a FALL term, and if it's not
+        // then ask for the number of passed OU courses during the current 
+        // academic year
+        // int passed_OU_in_cur_academic_year = 0;
+        while (!Course.isFallTerm(1) && _passed_OU_in_cur_academic_year==-1) {
+            String num_str = 
+                    JOptionPane.showInputDialog("#OU courses already taken "+
+                                                "during current academic year");
+            try {
+             _passed_OU_in_cur_academic_year = Integer.parseInt(num_str);
+            }
+            catch (NumberFormatException e) {
+                JOptionPane.showMessageDialog(null, "Please enter "+
+                                                    "a non-negative integer");
+            }
+        }
+        
+    }
+    
+    
+    /**
+     * allow desired courses list items to be edited (using Ctl-Right-Click)
+     * to set (or reset) desired terms to take the course. If the terms entered
+     * are not OK, the course is considered and labeled as undesired!
+     */
+    final void enableRightClick4DesiredCoursesList() {
+        // allow the desired courses list items (CodeNameAllowedTerms
+        // objects) to be edited by Ctl-right-click for desired term
+        _desiredCoursesList.addMouseListener(new MouseAdapter() {
+            public void mousePressed(MouseEvent e) {
+                // first, set the CurrentDate
+                String cur_date = _curDateTxtFld.getText();
+                String[] cds = cur_date.split("/");
+                CurrentDate._curDay = Integer.parseInt(cds[0]);
+                CurrentDate._curMonth = Integer.parseInt(cds[1]);
+                CurrentDate._curYear = Integer.parseInt(cds[2]);
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    int index = 
+                            _desiredCoursesList.locationToIndex(e.getPoint());
+                    if (index != -1) {
+                        // preserve existing selections
+                        _desiredCoursesList.addSelectionInterval(index, index);
+
+                        if (e.isControlDown()) {
+                            CodeNameAllowedTerms item = 
+                                (CodeNameAllowedTerms) _itcClassListModel.
+                                                         getElementAt(index);
+
+                            String newValue = 
+                                    JOptionPane.showInputDialog(
+                                                  _desiredCoursesList,
+                                                  "Enter desired term " +
+                                                  "(or '-' or 'clear') for " + 
+                                                  item._code + ":",
+                                                  "Desired Terms", 
+                                                  JOptionPane.PLAIN_MESSAGE);
+
+                            if (newValue!=null && !newValue.trim().isEmpty()) {
+                                // ensure newValue is OK
+                                if ("clear".equals(newValue)) {
+                                    item._allowedTerms = "allterms";
+                                    _itcClassListModel.setElementAt(item, index);
+                                    return;
+                                }
+                                final int Smax = 
+                                        _miphdlr.getScheduleParams().getSmax();
+                                if (CodeNameAllowedTerms.prefferedTermsAllowed(
+                                                           item._code, 
+                                                           newValue, 
+                                                           -1, 
+                                                           Smax)==false) {
+                                    newValue = "-";
+                                }
+                                item._allowedTerms = newValue;
+                                _itcClassListModel.setElementAt(item, index);
+                            }
+                            else {  // reset desired terms
+                                item._allowedTerms = "";
+                                _itcClassListModel.setElementAt(item, index);
+                            }
+                        }
+                    }
+                }
+            }
+        });        
     }
     
     
@@ -239,6 +307,7 @@ public class MainGUI extends javax.swing.JFrame {
         _maxNumCrsPerSemFld = new javax.swing.JTextField();
         jLabel7 = new javax.swing.JLabel();
         _maxNumCoursesDuringThesisFld = new javax.swing.JTextField();
+        _feasCheckBtn = new javax.swing.JButton();
         _menuBar = new javax.swing.JMenuBar();
         _fileMenu = new javax.swing.JMenu();
         _loadMenuItem = new javax.swing.JMenuItem();
@@ -299,7 +368,7 @@ public class MainGUI extends javax.swing.JFrame {
                     .addComponent(jLabel6))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(_outputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jScrollPane4, javax.swing.GroupLayout.DEFAULT_SIZE, 286, Short.MAX_VALUE)
+                    .addComponent(jScrollPane4, javax.swing.GroupLayout.DEFAULT_SIZE, 284, Short.MAX_VALUE)
                     .addComponent(_outputAreaScrollPane))
                 .addContainerGap())
         );
@@ -311,7 +380,7 @@ public class MainGUI extends javax.swing.JFrame {
         _passedCourseSelectorLbl.setText("Select all courses passed so far:");
 
         _passedCoursesList.setModel(_classListModel);
-        _passedCoursesList.setToolTipText("select all courses passed already");
+        _passedCoursesList.setToolTipText("select all courses passed already (use Ctl-Left Click for multiple selections)");
         jScrollPane2.setViewportView(_passedCoursesList);
 
         jLabel1.setText("Select Desired Concentration:");
@@ -333,9 +402,15 @@ public class MainGUI extends javax.swing.JFrame {
         jLabel3.setText("Select Desired Courses To Take:");
 
         _desiredCoursesList.setModel(_itcClassListModel);
+        _desiredCoursesList.setToolTipText("Use R-Click for multiple selection; use Ctl-R-Click to specify term to take course");
         jScrollPane5.setViewportView(_desiredCoursesList);
 
         _honorStudentChkBox.setText("I am an honor student");
+        _honorStudentChkBox.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                _honorStudentChkBoxActionPerformed(evt);
+            }
+        });
 
         buttonGroup1.add(_shortestComplTimeBtn);
         _shortestComplTimeBtn.setSelected(true);
@@ -349,7 +424,7 @@ public class MainGUI extends javax.swing.JFrame {
         buttonGroup1.add(_diffiBalanceBtn);
         _diffiBalanceBtn.setText("Max. Expected GPA");
 
-        _summerSemestersOffChkBox.setText("Summer Semesters Off");
+        _summerSemestersOffChkBox.setText("Summer Periods Off");
         _summerSemestersOffChkBox.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 _summerSemestersOffChkBoxActionPerformed(evt);
@@ -383,6 +458,14 @@ public class MainGUI extends javax.swing.JFrame {
         jLabel7.setText("Max #Courses dur. Thesis:");
 
         _maxNumCoursesDuringThesisFld.setText("1");
+
+        _feasCheckBtn.setText("Feas. Chk");
+        _feasCheckBtn.setToolTipText("Check whether desired courses lead to feasible schedule, when next term only contains courses designated for then");
+        _feasCheckBtn.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                _feasCheckBtnActionPerformed(evt);
+            }
+        });
 
         javax.swing.GroupLayout _inputsPanelLayout = new javax.swing.GroupLayout(_inputsPanel);
         _inputsPanel.setLayout(_inputsPanelLayout);
@@ -418,25 +501,29 @@ public class MainGUI extends javax.swing.JFrame {
                                     .addComponent(_shortestComplTimeBtn, javax.swing.GroupLayout.PREFERRED_SIZE, 145, javax.swing.GroupLayout.PREFERRED_SIZE)
                                     .addComponent(_diffiBalanceBtn, javax.swing.GroupLayout.PREFERRED_SIZE, 134, javax.swing.GroupLayout.PREFERRED_SIZE)))
                             .addGroup(_inputsPanelLayout.createSequentialGroup()
+                                .addComponent(jLabel1)
+                                .addGap(0, 0, Short.MAX_VALUE))
+                            .addGroup(_inputsPanelLayout.createSequentialGroup()
                                 .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                    .addComponent(jLabel1)
+                                    .addComponent(_summerSemestersOffChkBox)
+                                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, _inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                                        .addComponent(_stChkBox, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                        .addComponent(_s2ChkBox, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                        .addComponent(_s1ChkBox, javax.swing.GroupLayout.Alignment.TRAILING))
+                                    .addComponent(_honorStudentChkBox))
+                                .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                                     .addGroup(_inputsPanelLayout.createSequentialGroup()
-                                        .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                            .addComponent(_summerSemestersOffChkBox)
-                                            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, _inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                                                .addComponent(_stChkBox, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                                .addComponent(_s2ChkBox, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                                .addComponent(_s1ChkBox, javax.swing.GroupLayout.Alignment.TRAILING))
-                                            .addComponent(_honorStudentChkBox))
-                                        .addGap(18, 18, 18)
                                         .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                                             .addComponent(jLabel7)
                                             .addComponent(jLabel4))
                                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                                         .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                                             .addComponent(_maxNumCrsPerSemFld, javax.swing.GroupLayout.PREFERRED_SIZE, 56, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                            .addComponent(_maxNumCoursesDuringThesisFld, javax.swing.GroupLayout.PREFERRED_SIZE, 56, javax.swing.GroupLayout.PREFERRED_SIZE))))
-                                .addGap(0, 0, Short.MAX_VALUE)))))
+                                            .addComponent(_maxNumCoursesDuringThesisFld, javax.swing.GroupLayout.PREFERRED_SIZE, 56, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                        .addGap(0, 0, Short.MAX_VALUE))
+                                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, _inputsPanelLayout.createSequentialGroup()
+                                        .addGap(0, 0, Short.MAX_VALUE)
+                                        .addComponent(_feasCheckBtn)))))))
                 .addContainerGap())
         );
         _inputsPanelLayout.setVerticalGroup(
@@ -474,7 +561,9 @@ public class MainGUI extends javax.swing.JFrame {
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                         .addComponent(_s2ChkBox)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(_stChkBox)
+                        .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                            .addComponent(_stChkBox)
+                            .addComponent(_feasCheckBtn))
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 19, Short.MAX_VALUE)
                         .addGroup(_inputsPanelLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                             .addComponent(_runBtn)
@@ -574,7 +663,7 @@ public class MainGUI extends javax.swing.JFrame {
 
     
     private void _runBtnActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__runBtnActionPerformed
-        // create the MIP model, and then execute the GUROBI optimizer
+        // create the MIP model, and then execute the GUROBI or SCIP optimizer
         // to solve the model and write the results to the output area. During
         // this time, the GUI will be un-responsive.
         // before anything else, set current date
@@ -584,23 +673,8 @@ public class MainGUI extends javax.swing.JFrame {
         CurrentDate._curMonth = Integer.parseInt(cds[1]);
         CurrentDate._curYear = Integer.parseInt(cds[2]);
         final int Smax = _miphdlr.getScheduleParams().getSmax();
-        // check if the first planning semester is a FALL term, and if it's not
-        // then ask for the number of passed OU courses during the current 
-        // academic year
-        // int passed_OU_in_cur_academic_year = 0;
-        while (!Course.isFallTerm(1) && _passed_OU_in_cur_academic_year==-1) {
-            String num_str = 
-                    JOptionPane.showInputDialog("#OU courses already taken "+
-                                                "during current academic year");
-            try {
-             _passed_OU_in_cur_academic_year = Integer.parseInt(num_str);
-            }
-            catch (NumberFormatException e) {
-                JOptionPane.showMessageDialog(null, "Please enter "+
-                                                    "a non-negative integer");
-            }
-        }
-        this.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+        if (!_feasChkAsked)
+            this.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
         // first, get the passed courses and the desired courses from the JList
         // objects
         int[] sel_passed = this._passedCoursesList.getSelectedIndices();
@@ -655,7 +729,35 @@ public class MainGUI extends javax.swing.JFrame {
                                " will stay at Integer.MAX_VALUE instead");
         }
         String schedfile = null;
+        String group2ignore = "NONE";
         if (this._shortestComplTimeBtn.isSelected()) {
+            int DN = 1000; int DL = 100; int Cr = 1; int Gr = 10;
+            // if we are in feasibility check mode, make sure the 1st term
+            // only has the courses the student has indicated as desired 
+            // for the upcoming term; also ignore any soft-order constraints
+            if (this._feasChkAsked) {
+                String first_term_name = Course.getTermNameByTermNo(1);
+                DesiredCourses des_courses = new DesiredCourses();
+                des_courses.addAll(desired_codes);
+                int num_crs_4_next_term = 
+                    des_courses.getNumDesiredCoursesForTerm(first_term_name);
+                _numCoursesPerTerm2StrMap.put(1, 
+                                              new Integer(num_crs_4_next_term).
+                                                      toString());
+                DN = 0; DL = 1; Cr = 0; Gr = 0;
+                group2ignore = "softorder";
+            } else {  // itc20260216: correct map after a Feas.Chk request
+                // not a Feas. Chk, so restore the _numCoursesPerTerm2StrMap[1]
+                JTextField txtFld = 
+                        (JTextField) this._numCoursesPerTerm2FldMap.get(1);
+                if (txtFld!=null) {
+                    String txt = txtFld.getText();
+                    if (txt!=null && txt.length()>0)
+                        _numCoursesPerTerm2StrMap.put(1, txt);
+                    else _numCoursesPerTerm2StrMap.put(1, "");
+                }
+                else _numCoursesPerTerm2StrMap.put(1, "");
+            }
             schedfile = _miphdlr.createMIPFile(isHonor, 
                                                max_crs_per_sem, 
                                                max_num_courses_dur_thesis,
@@ -665,9 +767,25 @@ public class MainGUI extends javax.swing.JFrame {
                                                _passed_OU_in_cur_academic_year,
                                                desired_codes, 
                                                concentration_name,
-                                               1000, 100, 1, 10);
+                                               DN, DL, Cr, Gr, group2ignore);
         }
         else if (this._diffiBalanceBtn.isSelected()) {
+            int DN = 1; int DL = 100; int Cr = 10; int Gr = 1000;
+            // if we are in feasibility check mode, make sure the 1st term
+            // only has the courses the student has indicated as desired 
+            // for the upcoming term
+            if (this._feasChkAsked) {
+                String first_term_name = Course.getTermNameByTermNo(1);
+                DesiredCourses des_courses = new DesiredCourses();
+                des_courses.addAll(desired_codes);
+                int num_crs_4_next_term = 
+                    des_courses.getNumDesiredCoursesForTerm(first_term_name);
+                _numCoursesPerTerm2StrMap.put(1, 
+                                              new Integer(num_crs_4_next_term).
+                                                      toString());
+                DN = 0; DL = 1; Cr = 0; Gr = 0;
+                group2ignore = "softorder";
+            }
             schedfile = _miphdlr.createMIPFile(isHonor, 
                                                max_crs_per_sem, 
                                                max_num_courses_dur_thesis,
@@ -677,174 +795,254 @@ public class MainGUI extends javax.swing.JFrame {
                                                _passed_OU_in_cur_academic_year,
                                                desired_codes, 
                                                concentration_name,
-                                               1, 100, 10, 1000);            
+                                               DN, DL, Cr, Gr, 
+                                               group2ignore);            
         }
-        this._outputsArea.setText(schedfile+" created.\nNow running GUROBI");
+        this._outputsArea.setText(schedfile+" created.\nNow running OPTIMIZER");
         String result = null;
         try {
             //final String program_code = 
             //        _miphdlr.getScheduleParams().getProgramCode();
             result = _miphdlr.optimizeSchedule(schedfile);
+            if (this._feasChkAsked) {
+                // don't write in the Outputs area the entire schedule
+                if (!result.startsWith("FAILURE")) {
+                    result = "Schedule feasibility OK!!!";
+                }
+                else {  
+                    // see if any single group of constraints is responsible
+                    // also check some (not all) common group combinations
+                    String[] groups_2_ignore = 
+                      {"PREREQS", "COREQS", 
+                       "L-5", "OTHER_L-5",
+                       "PREREQS L-5 OTHER_L-5",  // check L5 + PREREQS
+                       "L-6_L-4", "L-6_L-5", 
+                       "L-6_L-4 L-6_L-5",  // check both L6 
+                       "PREREQS L-6_L-4 L-6_L-5",  // check both L6 + PREREQS
+                       "PREREQS L-6_L-4 L-6_L-5 summer",  // add summers-off too
+                       "CREDIT", "LE_UPPER", 
+                       "TERM_CREDIT", "FRESHMAN", "TERM_DESIRE", "SUMMER", 
+                       "desired", "summer", "capstone", "THESIS", 
+                       "HonorGroup", "OU", "course_avail"};
+                    int DN = 0; int DL = 1; int Cr = 0; int Gr = 0;
+                    boolean cont = true;
+                    for (String group_constr : groups_2_ignore) {
+                        String group_constr2 = 
+                                group_constr + " softorder";
+                        schedfile = _miphdlr.createMIPFile(isHonor, 
+                                               max_crs_per_sem, 
+                                               max_num_courses_dur_thesis,
+                                               s1off, s2off, stoff, 
+                                               _numCoursesPerTerm2StrMap,
+                                               passed_codes, 
+                                               _passed_OU_in_cur_academic_year,
+                                               desired_codes, 
+                                               concentration_name,
+                                               DN, DL, Cr, Gr, group_constr2);
+                        String res = _miphdlr.optimizeSchedule(schedfile);
+                        if (!res.startsWith("FAILURE")) {
+                            result = 
+                              "INFEASIBLE PLAN; RESPONSIBLE CONSTRAINT GROUP=" +
+                              group_constr;
+                            cont = false;
+                            break;
+                        }
+                    }
+                    // do the same for the group-constraints
+                    Iterator<String> gnamesit = 
+                            CourseGroup.getCourseGroupNameIterator();
+                    while (cont && gnamesit.hasNext()) {
+                        String group_constr = gnamesit.next();
+                        String group_constr2 = group_constr + " softorder";
+                        schedfile = _miphdlr.createMIPFile(isHonor, 
+                                               max_crs_per_sem, 
+                                               max_num_courses_dur_thesis,
+                                               s1off, s2off, stoff, 
+                                               _numCoursesPerTerm2StrMap,
+                                               passed_codes, 
+                                               _passed_OU_in_cur_academic_year,
+                                               desired_codes, 
+                                               concentration_name,
+                                               DN, DL, Cr, Gr, group_constr2);
+                        String res = _miphdlr.optimizeSchedule(schedfile);
+                        if (!res.startsWith("FAILURE")) {
+                            result = 
+                              "INFEASIBLE PLAN; RESPONSIBLE CONSTRAINT GROUP=" +
+                              group_constr;
+                            break;
+                        }
+                    }
+                }
+            }
             // write result to output editor-pane too
             HashMap<Integer, Integer> solnmap = 
                     _miphdlr.getLastOptimalSolution();
             this._outputTextPane.setText("");  // reset the output text pane
             _varTermsMap.clear();
             _numCoursesPerTerm2FldMap.clear();
-            StyledDocument doc = this._outputTextPane.getStyledDocument();
-            SimpleAttributeSet attr = new SimpleAttributeSet();
-            /* below is example code for adding widgets in JTextPane
-            for (String dat : data ) {
-                doc.insertString(doc.getLength(), dat, attr );
-                tp.setCaretPosition(tp.getDocument().getLength());
-                tp.insertComponent(new JButton("Click"));
-                doc.insertString(doc.getLength(), "\n", attr );
-            }
-            setLocationRelativeTo(null);
-            setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-            setVisible(true);            
-            */            
-            // write courses per semester
-            Iterator<Integer> vid_it = solnmap.keySet().iterator();
-            // we need tree-map to have the keys in sorted asc order
-            TreeMap<Integer, Set<Integer>> crss_by_trm_map = new TreeMap<>();
-            while (vid_it.hasNext()) {
-                int vid = vid_it.next();
-                int tno = solnmap.get(vid);
-                if (tno<=0) continue;  // don't show courses already taken
-                Set<Integer> crs = crss_by_trm_map.get(tno);
-                if (crs==null) {
-                    crs = new HashSet<>();
-                    crss_by_trm_map.put(tno, crs);
+            
+            if (!this._feasChkAsked) {
+                StyledDocument doc = this._outputTextPane.getStyledDocument();
+                SimpleAttributeSet attr = new SimpleAttributeSet();
+                /* below is example code for adding widgets in JTextPane
+                for (String dat : data ) {
+                    doc.insertString(doc.getLength(), dat, attr );
+                    tp.setCaretPosition(tp.getDocument().getLength());
+                    tp.insertComponent(new JButton("Click"));
+                    doc.insertString(doc.getLength(), "\n", attr );
                 }
-                crs.add(vid);
-            }
-            Iterator<Integer> term_it = crss_by_trm_map.keySet().iterator();
-            while (term_it.hasNext()) {
-                int tno = term_it.next();
-                String tname = Course.getTermNameByTermNo(tno);
-                doc.insertString(doc.getLength(), "--- "+tname+" --- ", attr);
-                doc.insertString(doc.getLength(), " #Courses for Term: ", attr);
-                this._outputTextPane.setCaretPosition(this._outputTextPane.
-                                                          getDocument().
-                                                              getLength());
-                JTextField tfld2 = new JTextField("");
-                tfld2.setToolTipText(
-                            "Enter #Courses constraint for this term "+
-                            "eg '<=3' or '2'");
-                // show constraint value if there exists one
-                if (_numCoursesPerTerm2StrMap.containsKey(tno)) {
-                    tfld2.setText(_numCoursesPerTerm2StrMap.get(tno));
-                }
-                _numCoursesPerTerm2FldMap.put(tno, tfld2);
-                this._outputTextPane.insertComponent(tfld2);
-                doc.insertString(doc.getLength(), "\n", attr);
-                
-                Set<Integer> cids = crss_by_trm_map.get(tno);
-                for (int cid : cids) {
-                    Course c = Course.getCourseById(cid);
-                    // ignore courses that are not ITC or MATH
-                    // this can be modeled by querying if the course belongs
-                    // to a particular CourseGroup, say the 
-                    // "EditableTimeCoursesGroup", but it'd be a lot of work to
-                    // create such group file containing all ITC and MA courses.
-                    // below, we use just the program-code string
-                    //if (!c.getCode().startsWith(program_code)) continue;
-                    String term = Course.getTermNameByTermNo(tno);
-                    String info = c.getCode()+" "+c.getName()+" Prefer Terms: ";
-                    doc.insertString(doc.getLength(), info, attr);
-                    this._outputTextPane.setCaretPosition(this._outputTextPane.
-                                                            getDocument().
-                                                              getLength());
-                    JTextField tfld = new JTextField("");
-                    tfld.setToolTipText(
-                            "Enter terms to allow separated by space or '-' to"+
-                            " indicate undesired course or 'allotherterms' to"+
-                            " indicate any other term OK; eg 'FA2022 SP2023'");
-                    _varTermsMap.put(cid, tfld);
-                    this._outputTextPane.insertComponent(tfld);
-                    doc.insertString(doc.getLength(), "\n", attr);
-                }
-            }
-            JButton btn = new JButton("Change Terms");
-            btn.addActionListener(new ActionListener() {
-                public void actionPerformed(ActionEvent c) {
-                    _numCoursesPerTerm2StrMap.clear();
-                    Iterator<Integer> tit = 
-                        _numCoursesPerTerm2FldMap.keySet().iterator();
-                    while (tit.hasNext()) {
-                        int tno = tit.next();
-                        JTextField tfld = _numCoursesPerTerm2FldMap.get(tno);
-                        _numCoursesPerTerm2StrMap.put(tno, tfld.getText());
+                setLocationRelativeTo(null);
+                setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+                setVisible(true);            
+                */            
+                // write courses per semester
+                Iterator<Integer> vid_it = solnmap.keySet().iterator();
+                // find tno_max for iteration over terms
+                int tno_max = 0;
+                // we need tree-map to have the keys in sorted asc order
+                TreeMap<Integer, Set<Integer>> crss_by_trm_map = new TreeMap<>();
+                while (vid_it.hasNext()) {
+                    int vid = vid_it.next();
+                    int tno = solnmap.get(vid);
+                    if (tno > tno_max) tno_max = tno;
+                    if (tno<=0) continue;  // don't show courses already taken
+                    Set<Integer> crs = crss_by_trm_map.get(tno);
+                    if (crs==null) {
+                        crs = new HashSet<>();
+                        crss_by_trm_map.put(tno, crs);
                     }
-                    Iterator<Integer> vit = _varTermsMap.keySet().iterator();
-                    List<Integer> sel_inds = new ArrayList<>();
-                    while (vit.hasNext()) {
-                        int vid = vit.next();
-                        int cur_termno = 
-                                _miphdlr.getLastOptimalSolution().get(vid);
-                        JTextField vfld = _varTermsMap.get(vid);
-                        if (vfld.getText().length()>0) {
-                            String terms = vfld.getText().trim();
-                            if (terms.length()>0) {
-                                Course cv = Course.getCourseById(vid);
-                                if ("-".equals(terms)) {  // undesired course
-                                    terms = "";
-                                }
-                                else if (!CodeNameAllowedTerms.
-                                             prefferedTermsAllowed(cv.getCode(), 
-                                                                   terms,
-                                                                   cur_termno,
-                                                                   Smax)){
-                                    terms = "";  // indicates course is not 
-                                                 // offered during terms
-                                }
-                                // search to find where in _itcClassListModel
-                                // is the given course; if not found (LE course)
-                                // add it to the model
-                                int sz = _itcClassListModel.getSize();
-                                boolean found = false;
-                                for (int i=0; i<sz; i++) {
-                                    CodeNameAllowedTerms mi = 
-                                            (CodeNameAllowedTerms) 
-                                              _itcClassListModel.get(i);
-                                    if (mi._code.equals(cv.getCode())) {
-                                        CodeNameAllowedTerms new_cnat = 
-                                                new CodeNameAllowedTerms(
-                                                        cv.getCode(), 
-                                                        cv.getName(), 
-                                                        terms);
-                                        _itcClassListModel.set(i, new_cnat);
-                                        sel_inds.add(i);
-                                        found = true;
-                                        break;
+                    crs.add(vid);
+                }
+                Iterator<Integer> term_it = crss_by_trm_map.keySet().iterator();
+                //while (term_it.hasNext()) {
+                //    int tno = term_it.next();
+                for (int tno=1; tno<=tno_max; ++tno) {
+                    String tname = Course.getTermNameByTermNo(tno);
+                    doc.insertString(doc.getLength(), "--- "+tname+" --- ", attr);
+                    doc.insertString(doc.getLength(), " #Courses for Term: ", attr);
+                    this._outputTextPane.setCaretPosition(this._outputTextPane.
+                                                              getDocument().
+                                                                  getLength());
+                    JTextField tfld2 = new JTextField("");
+                    tfld2.setToolTipText(
+                                "Enter #Courses constraint for this term "+
+                                "eg '<=3' or '2'");
+                    // show constraint value if there exists one
+                    if (_numCoursesPerTerm2StrMap.containsKey(tno)) {
+                        tfld2.setText(_numCoursesPerTerm2StrMap.get(tno));
+                    }
+                    _numCoursesPerTerm2FldMap.put(tno, tfld2);
+                    this._outputTextPane.insertComponent(tfld2);
+                    doc.insertString(doc.getLength(), "\n", attr);
+
+                    Set<Integer> cids = crss_by_trm_map.get(tno);
+                    if (cids==null) cids = new HashSet<>();  // cannot be null
+                    for (int cid : cids) {
+                        Course c = Course.getCourseById(cid);
+                        // ignore courses that are not ITC or MATH
+                        // this can be modeled by querying if the course belongs
+                        // to a particular CourseGroup, say the 
+                        // "EditableTimeCoursesGroup", but it'd be a lot of work to
+                        // create such group file containing all ITC and MA courses.
+                        // below, we use just the program-code string
+                        //if (!c.getCode().startsWith(program_code)) continue;
+                        String term = Course.getTermNameByTermNo(tno);
+                        String info = c.getCode()+" "+c.getName()+" Prefer Terms: ";
+                        doc.insertString(doc.getLength(), info, attr);
+                        this._outputTextPane.setCaretPosition(this._outputTextPane.
+                                                                getDocument().
+                                                                  getLength());
+                        JTextField tfld = new JTextField("");
+                        tfld.setToolTipText(
+                                "Enter terms to allow separated by space or '-' to"+
+                                " indicate undesired course or 'allotherterms' to"+
+                                " indicate any other term OK; eg 'FA2022 SP2023'");
+                        _varTermsMap.put(cid, tfld);
+                        this._outputTextPane.insertComponent(tfld);
+                        doc.insertString(doc.getLength(), "\n", attr);
+                    }
+                }
+                JButton btn = new JButton("Change Terms");
+                btn.addActionListener(new ActionListener() {
+                    public void actionPerformed(ActionEvent c) {
+                        _numCoursesPerTerm2StrMap.clear();
+                        Iterator<Integer> tit = 
+                            _numCoursesPerTerm2FldMap.keySet().iterator();
+                        while (tit.hasNext()) {
+                            int tno = tit.next();
+                            JTextField tfld = _numCoursesPerTerm2FldMap.get(tno);
+                            _numCoursesPerTerm2StrMap.put(tno, tfld.getText());
+                        }
+                        Iterator<Integer> vit = _varTermsMap.keySet().iterator();
+                        List<Integer> sel_inds = new ArrayList<>();
+                        while (vit.hasNext()) {
+                            int vid = vit.next();
+                            int cur_termno = 
+                                    _miphdlr.getLastOptimalSolution().get(vid);
+                            JTextField vfld = _varTermsMap.get(vid);
+                            if (vfld.getText().length()>0) {
+                                String terms = vfld.getText().trim();
+                                if (terms.length()>0) {
+                                    Course cv = Course.getCourseById(vid);
+                                    if ("-".equals(terms)) {  // undesired course
+                                        terms = "";
                                     }
-                                }
-                                if (!found) {  // course not in major program
-                                        CodeNameAllowedTerms new_cnat = 
-                                                new CodeNameAllowedTerms(
-                                                        cv.getCode(), 
-                                                        cv.getName(), 
-                                                        terms);                                    
-                                    _itcClassListModel.addElement(new_cnat);
-                                    sel_inds.add(_itcClassListModel.size()-1);
+                                    else if (!CodeNameAllowedTerms.
+                                                 prefferedTermsAllowed(cv.getCode(), 
+                                                                       terms,
+                                                                       cur_termno,
+                                                                       Smax)){
+                                        terms = "";  // indicates course is not 
+                                                     // offered during terms
+                                    }
+                                    // search to find where in _itcClassListModel
+                                    // is the given course; if not found (LE course)
+                                    // add it to the model
+                                    int sz = _itcClassListModel.getSize();
+                                    boolean found = false;
+                                    for (int i=0; i<sz; i++) {
+                                        CodeNameAllowedTerms mi = 
+                                                (CodeNameAllowedTerms) 
+                                                  _itcClassListModel.get(i);
+                                        if (mi._code.equals(cv.getCode())) {
+                                            CodeNameAllowedTerms new_cnat = 
+                                                    new CodeNameAllowedTerms(
+                                                            cv.getCode(), 
+                                                            cv.getName(), 
+                                                            terms);
+                                            _itcClassListModel.set(i, new_cnat);
+                                            sel_inds.add(i);
+                                            found = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!found) {  // course not in major program
+                                            CodeNameAllowedTerms new_cnat = 
+                                                    new CodeNameAllowedTerms(
+                                                            cv.getCode(), 
+                                                            cv.getName(), 
+                                                            terms);                                    
+                                        _itcClassListModel.addElement(new_cnat);
+                                        sel_inds.add(_itcClassListModel.size()-1);
+                                    }
                                 }
                             }
                         }
+                        // highlight also the indices for courses to change in 
+                        // _desiredCoursesList
+                        int[] indices = _desiredCoursesList.getSelectedIndices();
+                        for (int ind : indices) {
+                            if (!sel_inds.contains(ind)) sel_inds.add(ind);
+                        }
+                        indices = new int[sel_inds.size()];
+                        for (int i=0; i<indices.length; i++) 
+                            indices[i] = sel_inds.get(i);
+                        _desiredCoursesList.setSelectedIndices(indices);
                     }
-                    // highlight also the indices for courses to change in 
-                    // _desiredCoursesList
-                    int[] indices = _desiredCoursesList.getSelectedIndices();
-                    for (int ind : indices) {
-                        if (!sel_inds.contains(ind)) sel_inds.add(ind);
-                    }
-                    indices = new int[sel_inds.size()];
-                    for (int i=0; i<indices.length; i++) 
-                        indices[i] = sel_inds.get(i);
-                    _desiredCoursesList.setSelectedIndices(indices);
-                }
-            });
-            this._outputTextPane.insertComponent(btn);
+                });
+                this._outputTextPane.insertComponent(btn);
+            }
+            // include the "Reset Desired..." no matter what
             JButton btn2 = new JButton("Reset Desired Courses/Terms");
             btn2.addActionListener(new ActionListener() {
                 public void actionPerformed(ActionEvent c) {
@@ -852,15 +1050,15 @@ public class MainGUI extends javax.swing.JFrame {
                     for (int i=0; i<sz; i++) {
                         CodeNameAllowedTerms mi = 
                             (CodeNameAllowedTerms) _itcClassListModel.get(i);
-                            CodeNameAllowedTerms new_cnat = 
-                                    new CodeNameAllowedTerms(mi._code, 
-                                                             mi._title, 
-                                                             "allterms");
-                                        _itcClassListModel.set(i, new_cnat);
+                        CodeNameAllowedTerms new_cnat = 
+                            new CodeNameAllowedTerms(mi._code, 
+                                                     mi._title, 
+                                                     "allterms");
+                        _itcClassListModel.set(i, new_cnat);
                     }
                     _desiredCoursesList.clearSelection();
                 }   
-            });
+                });
             this._outputTextPane.insertComponent(btn2);
         }
         catch (GRBException e) {
@@ -878,7 +1076,8 @@ public class MainGUI extends javax.swing.JFrame {
         // now enable menu items as well
         this._saveScheduleMenuItem.setEnabled(true);
         // done, reset the cursor to normal
-        this.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
+        if (!_feasChkAsked)
+            this.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));
     }//GEN-LAST:event__runBtnActionPerformed
 
     
@@ -977,63 +1176,55 @@ public class MainGUI extends javax.swing.JFrame {
 
     
     private void _loadMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__loadMenuItemActionPerformed
-        // load the passed courses from file "passedcourses.txt" if it exists
+        // load the passed courses from file "passedcourses_<studentname>.txt" 
+        // if such file exists
+        final int Smax = _miphdlr.getScheduleParams().getSmax();
         String pfname = "passedcourses_"+_studentName+".txt";
         File pf = new File(pfname);
         if (pf.exists()) {
-            try(BufferedReader br = new BufferedReader(new FileReader(pfname))){
-                List<Integer> cids = new ArrayList<>();
-                while(true) {
-                    String line = br.readLine();
-                    if (line==null) break;
-                    String[] cs = line.split(";");
-                    for (String code : cs) {
-                        Course c = Course.getCourseByCode(code);
-                        cids.add(c.getId());
-                    }
+            PassedCourses passed = new PassedCourses();
+            passed.readPassedCoursesFromFile(pfname);
+            List<Integer> l = new ArrayList<>();
+            for (int i=0; i<_classListModel.getSize(); i++) {
+                Course ci = (Course) _classListModel.elementAt(i);
+                if (passed.contains(ci.getCode())) {
+                    l.add(i);
                 }
-                int[] sel_inds = cids.stream().mapToInt(i -> i).toArray();
-                this._passedCoursesList.setSelectedIndices(sel_inds);
             }
-            catch (IOException e) {
-                e.printStackTrace();
+            if (l.size()>0) {
+                int[] larr = new int[l.size()];
+                int i=0;
+                for (Integer ii : l) larr[i++] = ii;
+                _passedCoursesList.setSelectedIndices(larr);
             }
         }
         else {
             JOptionPane.showConfirmDialog(null, 
                                           "couldn't find "+pfname+" file");
         }
-        // load the desired courses from file "desiredcourses.txt" if it exists
+        // load desired courses from file "desiredcourses_<studentname.txt" if 
+        // such file exists
         String dfname = "desiredcourses_"+_studentName+".txt";
         File df = new File(dfname);
+        _desiredCoursesList.clearSelection();
         if (df.exists()) {
-            try(BufferedReader br = new BufferedReader(new FileReader(dfname))){
-                List<Integer> cids = new ArrayList<>();
-                while(true) {
-                    String line = br.readLine();
-                    if (line==null) break;
-                    String[] cs = line.split(";");
-                    String ccode = cs[0];
-                    Course ci = Course.getCourseByCode(ccode);
-                    if (ci!=null) {
-                        int id = ci.getId();
-                        cids.add(id);
-                        // also update the desired courses list in GUI
-                        String terms = cs.length>1 ? 
-                                         cs[1] :
-                                         line.endsWith(";") ? "" : "allterms";
-                        CodeNameAllowedTerms cnat = 
-                                new CodeNameAllowedTerms(ci.getCode(), 
-                                                         ci.getName(), 
-                                                         terms);
-                        this._itcClassListModel.set(id, cnat);
-                    }
+            DesiredCourses d = new DesiredCourses();
+            d.readDesiredCoursesFromFile(dfname);
+            List<Integer> sis = new ArrayList<>();
+            for (int i=0; i<_itcClassListModel.size(); i++) {
+                CodeNameAllowedTerms ci = 
+                        (CodeNameAllowedTerms) _itcClassListModel.elementAt(i);
+                if (d.contains(ci._code)) {
+                    CodeNameAllowedTerms cnat = 
+                            d.getCodeNameAllowedTerms(ci._code, Smax);
+                    _itcClassListModel.setElementAt(cnat, i);
+                    sis.add(i);
                 }
-                int[] sel_inds = cids.stream().mapToInt(i -> i).toArray();
-                this._desiredCoursesList.setSelectedIndices(sel_inds);
             }
-            catch (IOException e) {
-                e.printStackTrace();
+            if (sis.size()>0) {
+                int[] sisA = new int[sis.size()];
+                for (int i=0; i<sis.size(); i++) sisA[i] = sis.get(i);
+                _desiredCoursesList.setSelectedIndices(sisA);
             }
         }
         else {
@@ -1065,7 +1256,11 @@ public class MainGUI extends javax.swing.JFrame {
                 Course.reset();
                 populateCourseListModels();
             }
-            else throw new IllegalStateException("process failed");
+            else if (retval==-1) {  // a modifyCourse() occurred that changed
+                                    // the Course object's code, so must close.
+                System.exit(0);
+            }
+            else throw new IllegalStateException("CourseEditor process failed");
         }
         catch (Exception e) {
             e.printStackTrace();
@@ -1101,10 +1296,46 @@ public class MainGUI extends javax.swing.JFrame {
             e.printStackTrace();
             JOptionPane.showConfirmDialog(null, "CourseGroupEditor failed.");
         }
-        finally {
+        finally { 
             this.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));            
         }
     }//GEN-LAST:event__editCourseGroupsMenuItemActionPerformed
+
+    private void _feasCheckBtnActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__feasCheckBtnActionPerformed
+        _feasChkAsked = true;  // indicate we are asking for a feas. check
+        // call the method for obtaining the optimal schedule if it exists
+        this.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+        _runBtnActionPerformed(evt);
+        this.setCursor(Cursor.getDefaultCursor());
+        _feasChkAsked = false;  // reset the boolean indicator of feas. checks
+    }//GEN-LAST:event__feasCheckBtnActionPerformed
+
+    private void _honorStudentChkBoxActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__honorStudentChkBoxActionPerformed
+        // increment number of courses to take when student is honor student
+        if (_honorStudentChkBox.isSelected()) {  
+            String thesisMaxNumCourses = 
+                    _maxNumCoursesDuringThesisFld.getText();
+            if (thesisMaxNumCourses.length()==0)
+                _maxNumCoursesDuringThesisFld.setText("2");
+            else {
+                int num = Integer.parseInt(thesisMaxNumCourses);
+                String s = new Integer(num+1).toString();
+                _maxNumCoursesDuringThesisFld.setText(s);
+            }
+        }
+        else {
+            // decrement number of courses to take when student is NOT honor
+            String thesisMaxNumCourses = 
+                    _maxNumCoursesDuringThesisFld.getText();
+            if (thesisMaxNumCourses.length()==0)
+                _maxNumCoursesDuringThesisFld.setText("1");
+            else {
+                int num = Integer.parseInt(thesisMaxNumCourses);
+                String s = new Integer(num-1).toString();
+                if (num>1) _maxNumCoursesDuringThesisFld.setText(s);
+            }
+        }
+    }//GEN-LAST:event__honorStudentChkBoxActionPerformed
 
     
     /**
@@ -1160,6 +1391,7 @@ public class MainGUI extends javax.swing.JFrame {
     private javax.swing.JMenuItem _editCoursesMenuItem;
     private javax.swing.JMenu _editMenu;
     private javax.swing.JMenuItem _exitMenuItem;
+    private javax.swing.JButton _feasCheckBtn;
     private javax.swing.JMenu _fileMenu;
     private javax.swing.JRadioButton _honorStudentChkBox;
     private javax.swing.JPanel _inputsPanel;

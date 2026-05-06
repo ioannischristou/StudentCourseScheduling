@@ -18,12 +18,17 @@ import java.util.*;
  */
 public class MIPHandler {
     private ScheduleParams _params;
+    /**
+     * PassedCourses class represents courses the student has declared they have
+     * passed already (or are currently taking).
+     */
     private PassedCourses _passed;
-    private DesiredCourses _desired;  // PassedCourses & DesiredCourses classes
-                                      // have exactly the same structure, and it
-                                      // would be better to be represented by a
-                                      // single class, say SpecialCourses or
-                                      // smth like that.
+    /**
+     * DesiredCourses class represents courses the student wishes to take, along
+     * with their desired term(s) for taking them, or even designating they 
+     * don't want to take this course.
+     */
+    private DesiredCourses _desired;
     
     
     /**
@@ -33,6 +38,15 @@ public class MIPHandler {
      * constraints only. For other programs, likely it won't be needed.
      */
     private static final double _DOMAIN_COEFF_INCR = -0.001;
+    
+    
+    /**
+     * value needed as a multiplier for the actual coefficient of the objective
+     * terms of the form x_i_j for those x_i courses we want to "push" towards
+     * the last terms (unless the user says otherwise via "desired" courses
+     * and times set.
+     */
+    private static final double _LAST_TERMS_COEFF_MULT = 0.01;
     
     
     /**
@@ -168,7 +182,11 @@ public class MIPHandler {
      * describes a MIP Programming problem of the student course scheduling 
      * problem, with objective being a weighted combination of 
      * time-to-completion, total-number-of-credits, 
-     * maximum-sum-of-course-difficulty-levels-per-semester and sum-of-grades. 
+     * maximum-sum-of-course-difficulty-levels-per-semester and sum-of-grades.
+     * The objective may take into account any slack variables set-forth by
+     * "soft-constraints" defined. Also, the so-called "last-terms-courses" are
+     * "pushed" towards the end by adding the corresponding x_{i,j} variables
+     * with appropriate coefficients to favor the last terms.
      * Always last, with coefficient -0.001, is the objective to maximize 
      * courses from designated program codes in the schedule params. The 
      * objective to maximize individual student GPA is also present and is 
@@ -181,6 +199,50 @@ public class MIPHandler {
      * <CODE>[Passed | Desired]Courses</CODE> objects, the final say is whatever 
      * is selected in the GUI, and this is why these two sets are passed in as 
      * arguments to this method.
+     * Most constraints for the problem are expressed with the help of course 
+     * groups. The constraints in general fall under the following categories
+     * (more details can be found in the <CODE>CourseGroup</CODE> class 
+     * javadocs):
+     * <ul>
+     * <li> Prerequisite and corequisite constraints: hard constraints that must
+     * always be obeyed by the produced study plan (not expressed by course
+     * groups)
+     * <li> L-x constraints: hard constraints that have to do with the first
+     * appearance of L-5 and L-6 courses in the study plan of the student
+     * <li> summer-term and term constraints: hard constraints that have to do 
+     * with the maximum number of courses a student can take during any term and
+     * during the summer sessions in particular (not expressed by course groups)
+     * <li> total credit constraint: hard rule specifying the minimum number of
+     * credits required for graduation (not expressed by course groups)
+     * <li> course availability constraints: hard constraints that have to do
+     * with when a course is going to be taught (not expressed by course groups)
+     * <li> capstone constraints: hard constraints having to do with the total
+     * number of credits in terms of concentration courses a student must take
+     * before starting their capstone
+     * <li> thesis constraints: hard constraints that require only one course
+     * designated as "thesis" (capstone or thesis to be exact) will be chosen
+     * (not expressed by course groups; specified in the list of "thesis"
+     * codes in the "params.props" configuration file of the program under the
+     * key "ThesisCourseCodes")
+     * <li> Honor-student constraints: hard constraints having to do with the
+     * courses an Honors student should take to graduate "with Honors" from the
+     * program
+     * <li> OU constraints: hard constraints having to do with the total number
+     * of OU courses a student may take in an academic year
+     * <li> group constraints: hard constraints having to do with how many among
+     * a small number of courses a student is allowed to take totally, or on a 
+     * per-term basis
+     * <li> target constraints: hard or soft constraints specifying a minimum
+     * number of courses and/or credits that must be completed from a group of
+     * courses before a target course can be taken
+     * <li> soft-order constraints: optional constraints having to do with the
+     * order of two courses only if the courses have not been completed yet
+     * <li> soft-constraints: optional group constraints that are expressed via
+     * the introduction of slack variables so that they can be over-ridden by
+     * the user in their desires
+     * <li> passed courses and desired courses constraints: hard constraints 
+     * that are meant to be satisfied (not expressed by course groups)
+     * </ul>.
      * @param isHonorStudent boolean whether the student is an honors student
      * @param maxNumCrsPerSem int student-imposed max num courses per semester
      * @param maxNumCrsDurThesis int student-imposed max num courses during the
@@ -207,6 +269,10 @@ public class MIPHandler {
      * (per semester)
      * @param Crcoeff int the coefficient for the total-sum-of-credits objective
      * @param Grcoeff int the coefficient for the expected-GPA objective
+     * @param constr_groups_2_ignore String constraint groups to ignore to check
+     * if this is the responsible group for schedule infeasibility ("NONE" will 
+     * force all constraints to be taken into account); one example of this arg:
+     * "desired softorder"
      * @return String the name of the schedule lp-formatted file created; the 
      * reason for the timestamp in the name of the file is so that multiple 
      * application windows can be open at the same time without interfering with 
@@ -220,7 +286,8 @@ public class MIPHandler {
                                 Set<String> desired,
                                 String concentration,
                                 int DNcoeff, int DLcoeff, int Crcoeff, 
-                                int Grcoeff) {
+                                int Grcoeff,
+                                String constr_groups_2_ignore) {
         if (concentration==null || concentration.length()==0)
             throw new IllegalArgumentException("concentration area name "+
                                                "cannot be null or empty");
@@ -236,6 +303,14 @@ public class MIPHandler {
         StringBuffer prob = 
                 new StringBuffer("Minimize\nobj: "+DNcoeff+" D + "+
                                  DLcoeff+" DL + ");
+        // add the slack variables with appropriate objective coefficients
+        // this applies to "soft-constraints" only
+        addSlackVarsWithCoeffs(prob);
+        // add terms that will push certain codes towards the last terms
+        // this will allow for example a thesis2 course to be taken in the
+        // last semester (unless student desires otherwise), and thesis1 course
+        // to be taken the immediately previous term that it is offered
+        addSeniorTermsVarsWithCoeffs(prob);
         final int N = Course.getNumCourses();
         for (int i=0; i<N; i++) {
             Course ci = Course.getCourseById(i);
@@ -279,6 +354,9 @@ public class MIPHandler {
             else prob.append("\n");
         }
         prob.append("\nSubject To\n");
+        final Set<String> group_names = 
+                new HashSet<>(Arrays.asList(
+                                       constr_groups_2_ignore.split("\\s+")));
         // 2. now set the constraints
         // 2.1 first, the D constraints
         prob.append("\\ 1. D constraints\n");
@@ -307,86 +385,92 @@ public class MIPHandler {
             }
         }
         // 2.2 second, the class availability constraints
-        prob.append("\\ 2. class availability constraints\n");
-        for (int i=0; i<N; i++) {
-            List<Integer> terms_offered = 
-                    Course.getCourseById(i).getTermsOffered(Smax);
-            // itc: HERE debug
-            prob.append("\\ course-"+i+" terms: ");
-            for (Integer t : terms_offered) prob.append(t+" ");
-            prob.append("\n");
-            // itc: HERE debug up to here
-            for (int s=1; s<=Smax; s++) {
-                final int ois = terms_offered.contains(s) ? 1 : 0;
-                prob.append("c").append(ccount).
-                    append(": x_").append(i).append("_").append(s).
-                        append(" <= ").
-                            append(ois).
-                                append("\n");
-                ++ccount;
+        if (!group_names.contains("course_avail")) {
+            prob.append("\\ 2. class availability constraints\n");
+            for (int i=0; i<N; i++) {
+                List<Integer> terms_offered = 
+                        Course.getCourseById(i).getTermsOffered(Smax);
+                // itc: HERE debug
+                prob.append("\\ course-"+i+" terms: ");
+                for (Integer t : terms_offered) prob.append(t+" ");
+                prob.append("\n");
+                // itc: HERE debug up to here
+                for (int s=1; s<=Smax; s++) {
+                    final int ois = terms_offered.contains(s) ? 1 : 0;
+                    prob.append("c").append(ccount).
+                        append(": x_").append(i).append("_").append(s).
+                            append(" <= ").
+                                append(ois).
+                                    append("\n");
+                    ++ccount;
+                }
             }
         }
-        // 2.3 third, prerequisite constraints
-        prob.append("\\ 3a. PREREQ constraints\n");
-        for (int i=0; i<N; i++) {
-            Course ci = Course.getCourseById(i);
-            Set<Set<String>> prereq_codes = ci.getPrereqs();
-            if (prereq_codes.size()>=1) {
-                for (int s=1;s<=Smax; s++) {
-                    int ks = Course.isSummerTerm(s) ? 3 : 1;
-                    if (s-ks<0 || prereq_codes.isEmpty()) continue;
-                    for (Set<String> ps : prereq_codes) {
-                        if (ps.isEmpty()) continue;
-                        prob.append("c"+ccount+": x_"+i+"_"+s); ++ccount;
-                        prob.append(" - ");
-                        Iterator<String> ps_it = ps.iterator();
-                        while (ps_it.hasNext()) {
-                            String crsi = ps_it.next();
-                            Course cj = Course.getCourseByCode(crsi);
-                            int j = 0;
-                            try {
-                                j = cj.getId();
+        if (!group_names.contains("PREREQS")) {
+            // 2.3 third, prerequisite constraints
+            prob.append("\\ 3a. PREREQ constraints\n");
+            for (int i=0; i<N; i++) {
+                Course ci = Course.getCourseById(i);
+                Set<Set<String>> prereq_codes = ci.getPrereqs();
+                if (prereq_codes.size()>=1) {
+                    for (int s=1;s<=Smax; s++) {
+                        int ks = Course.isSummerTerm(s) ? 3 : 1;
+                        if (s-ks<0 || prereq_codes.isEmpty()) continue;
+                        for (Set<String> ps : prereq_codes) {
+                            if (ps.isEmpty()) continue;
+                            prob.append("c"+ccount+": x_"+i+"_"+s); ++ccount;
+                            prob.append(" - ");
+                            Iterator<String> ps_it = ps.iterator();
+                            while (ps_it.hasNext()) {
+                                String crsi = ps_it.next();
+                                Course cj = Course.getCourseByCode(crsi);
+                                int j = 0;
+                                try {
+                                    j = cj.getId();
+                                }
+                                catch (Exception e) {
+                                    System.err.println("course w/ code "+crsi+
+                                                       " doesn't exist "+
+                                                       "(prereqs for "+ci+")");
+                                    throw e;
+                                }
+                                for (int t=0; t<=s-ks; t++) {
+                                    prob.append("x_"+j+"_"+t);
+                                    if (t<s-ks) prob.append(" - ");
+                                }
+                                if (ps_it.hasNext()) prob.append(" - ");
+                                else prob.append(" <= 0\n");
                             }
-                            catch (Exception e) {
-                                System.err.println("course w/ code "+crsi+
-                                                   " doesn't exist "+
-                                                   "(prereqs for "+ci+")");
-                                throw e;
-                            }
-                            for (int t=0; t<=s-ks; t++) {
-                                prob.append("x_"+j+"_"+t);
-                                if (t<s-ks) prob.append(" - ");
-                            }
-                            if (ps_it.hasNext()) prob.append(" - ");
-                            else prob.append(" <= 0\n");
                         }
                     }
                 }
             }
         }
-        // 2.3 third continued, co-requisite constraints
-        prob.append("\\ 3b. COREQ constraints\n");
-        for (int i=0; i<N; i++) {
-            Course ci = Course.getCourseById(i);
-            Set<String> coreq_codes = ci.getCoreqs();
-            if (coreq_codes.size()>=1) {
-                for (int s=1; s<=Smax; s++) {
-                    final int ks = Course.isSummerTerm(s) ? 3 : 1;
-                    if (coreq_codes.isEmpty()) continue;
-                    prob.append("c"+ccount+": x_"+i+"_"+s+" - "); ++ccount;
-                    Iterator<String> coreq_it = coreq_codes.iterator();
-                    while (coreq_it.hasNext()) {
-                        String codej = coreq_it.next();
-                        Course cj = Course.getCourseByCode(codej);
-                        int j = cj.getId();
-                        prob.append("x_"+j+"_"+s);
-                        if (s-ks>=0) prob.append(" - ");
-                        for (int t=0; t<=s-ks; t++) {
-                            prob.append("x_"+j+"_"+t);
-                            if (t<s-ks) prob.append(" - ");
+        if (!group_names.contains("COREQS")) {
+            // 2.3 third continued, co-requisite constraints
+            prob.append("\\ 3b. COREQ constraints\n");
+            for (int i=0; i<N; i++) {
+                Course ci = Course.getCourseById(i);
+                Set<String> coreq_codes = ci.getCoreqs();
+                if (coreq_codes.size()>=1) {
+                    for (int s=1; s<=Smax; s++) {
+                        final int ks = Course.isSummerTerm(s) ? 3 : 1;
+                        if (coreq_codes.isEmpty()) continue;
+                        prob.append("c"+ccount+": x_"+i+"_"+s+" - "); ++ccount;
+                        Iterator<String> coreq_it = coreq_codes.iterator();
+                        while (coreq_it.hasNext()) {
+                            String codej = coreq_it.next();
+                            Course cj = Course.getCourseByCode(codej);
+                            int j = cj.getId();
+                            prob.append("x_"+j+"_"+s);
+                            if (s-ks>=0) prob.append(" - ");
+                            for (int t=0; t<=s-ks; t++) {
+                                prob.append("x_"+j+"_"+t);
+                                if (t<s-ks) prob.append(" - ");
+                            }
+                            if (coreq_it.hasNext()) prob.append(" - ");
+                            else prob.append(" <= 0\n");
                         }
-                        if (coreq_it.hasNext()) prob.append(" - ");
-                        else prob.append(" <= 0\n");
                     }
                 }
             }
@@ -400,44 +484,9 @@ public class MIPHandler {
         List<String> l6codes = level6.getGroupCodes();
         // L-5 constraints: at least 4 level-4 courses must be passed
         // before taking a level-5 course
-        prob.append("\\ 4a. L-5 constraints\n");
-        for (String l5cc : l5codes) {
-            Course l5crs = Course.getCourseByCode(l5cc);
-            int i = l5crs.getId();
-            for (int s=1; s<=Smax; s++) {
-                int ks = Course.isSummerTerm(s) ? 3 : 1;
-                prob.append("c"+ccount+": ");
-                ++ccount;
-                prob.append("4 x_"+i+"_"+s+" - ");
-                Iterator<String> l4codesit = l4codes.iterator();
-                while (l4codesit.hasNext()) {
-                    String js = l4codesit.next();
-                    Course l4crs = Course.getCourseByCode(js);
-                    int j = l4crs.getId();
-                    for (int t=0; t<=s-ks; t++) {
-                        prob.append("x_"+j+"_"+t);
-                        if (t<s-ks) prob.append(" - ");
-                        else {
-                            if (l4codesit.hasNext()) prob.append(" - ");
-                            else prob.append(" <= 0\n");
-                        }
-                    }
-                }
-            }
-        }
-        // OTHER L-5 constraints: level-5 constraints for non-ITC level-5 
-        // classes
-        prob.append("\\ 4b. OTHER L-5 constraints\n");
-        Iterator<String> cgs_it = CourseGroup.getCourseGroupNameIterator();
-        Set<String> other_l5_cgs = new HashSet<>();
-        while (cgs_it.hasNext()) {
-            String cgs = cgs_it.next();
-            if (cgs.startsWith("L5-")) other_l5_cgs.add(cgs);
-        }
-        for (String ocgl5 : other_l5_cgs) {
-            final List<String> ol5codes = 
-                    CourseGroup.getCourseGroupByName(ocgl5).getGroupCodes();
-            for (String l5cc : ol5codes) {
+        if (!group_names.contains("L-5")) {
+            prob.append("\\ 4a. L-5 constraints\n");
+            for (String l5cc : l5codes) {
                 Course l5crs = Course.getCourseByCode(l5cc);
                 int i = l5crs.getId();
                 for (int s=1; s<=Smax; s++) {
@@ -460,36 +509,77 @@ public class MIPHandler {
                         }
                     }
                 }
-            }            
+            }
+        }
+        // OTHER L-5 constraints: level-5 constraints for non-ITC level-5 
+        // classes
+        if (!group_names.contains("OTHER_L-5")) {
+            prob.append("\\ 4b. OTHER L-5 constraints\n");
+            Iterator<String> cgs_it = CourseGroup.getCourseGroupNameIterator();
+            Set<String> other_l5_cgs = new HashSet<>();
+            while (cgs_it.hasNext()) {
+                String cgs = cgs_it.next();
+                if (cgs.startsWith("L5-")) other_l5_cgs.add(cgs);
+            }
+            for (String ocgl5 : other_l5_cgs) {
+                final List<String> ol5codes = 
+                        CourseGroup.getCourseGroupByName(ocgl5).getGroupCodes();
+                for (String l5cc : ol5codes) {
+                    Course l5crs = Course.getCourseByCode(l5cc);
+                    int i = l5crs.getId();
+                    for (int s=1; s<=Smax; s++) {
+                        int ks = Course.isSummerTerm(s) ? 3 : 1;
+                        prob.append("c"+ccount+": ");
+                        ++ccount;
+                        prob.append("4 x_"+i+"_"+s+" - ");
+                        Iterator<String> l4codesit = l4codes.iterator();
+                        while (l4codesit.hasNext()) {
+                            String js = l4codesit.next();
+                            Course l4crs = Course.getCourseByCode(js);
+                            int j = l4crs.getId();
+                            for (int t=0; t<=s-ks; t++) {
+                                prob.append("x_"+j+"_"+t);
+                                if (t<s-ks) prob.append(" - ");
+                                else {
+                                    if (l4codesit.hasNext()) prob.append(" - ");
+                                    else prob.append(" <= 0\n");
+                                }
+                            }
+                        }
+                    }
+                }            
+            }
         }
         // L-6 constraints
         // first, ALL level-4 courses must be passed before taking a level-6
         // course
-        prob.append("\\ 5a. L-6 constraints about L-4\n");
-        final int l4_num = l4codes.size();
-        for (String l6cc : l6codes) {
-            Course l6crs = Course.getCourseByCode(l6cc);
-            if (l6crs==null) {
-                System.err.println("L-6 course w/ code "+l6cc+" doesn't exist");
-                throw new NullPointerException();
-            }
-            int i = l6crs.getId();
-            for (int s=1; s<=Smax; s++) {
-                int ks = Course.isSummerTerm(s) ? 3 : 1;
-                prob.append("c"+ccount+": ");
-                ++ccount;
-                prob.append(l4_num+" x_"+i+"_"+s+" - ");
-                Iterator<String> l4codesit = l4codes.iterator();
-                while (l4codesit.hasNext()) {
-                    String js = l4codesit.next();
-                    Course l4crs = Course.getCourseByCode(js);
-                    int j = l4crs.getId();
-                    for (int t=0; t<=s-ks; t++) {
-                        prob.append("x_"+j+"_"+t);
-                        if (t<s-ks) prob.append(" - ");
-                        else {
-                            if (l4codesit.hasNext()) prob.append(" - ");
-                            else prob.append(" <= 0\n");
+        if (!group_names.contains("L-6_L-4")) {
+            prob.append("\\ 5a. L-6 constraints about L-4\n");
+            final int l4_num = l4codes.size();
+            for (String l6cc : l6codes) {
+                Course l6crs = Course.getCourseByCode(l6cc);
+                if (l6crs==null) {
+                    System.err.println("L-6 course w/ code "+l6cc+" doesn't exist");
+                    throw new NullPointerException();
+                }
+                int i = l6crs.getId();
+                for (int s=1; s<=Smax; s++) {
+                    int ks = Course.isSummerTerm(s) ? 3 : 1;
+                    prob.append("c"+ccount+": ");
+                    ++ccount;
+                    prob.append(l4_num+" x_"+i+"_"+s+" - ");
+                    Iterator<String> l4codesit = l4codes.iterator();
+                    while (l4codesit.hasNext()) {
+                        String js = l4codesit.next();
+                        Course l4crs = Course.getCourseByCode(js);
+                        int j = l4crs.getId();
+                        for (int t=0; t<=s-ks; t++) {
+                            prob.append("x_"+j+"_"+t);
+                            if (t<s-ks) prob.append(" - ");
+                            else {
+                                if (l4codesit.hasNext()) prob.append(" - ");
+                                else prob.append(" <= 0\n");
+                            }
                         }
                     }
                 }
@@ -497,26 +587,28 @@ public class MIPHandler {
         }
         // second, at least 4 level-5 courses must be passed before taking
         // a level-6 course
-        prob.append("\\ 5b. L-6 constraints about L-5\n");
-        for (String l6cc : l6codes) {
-            Course l6crs = Course.getCourseByCode(l6cc);
-            int i = l6crs.getId();
-            for (int s=1; s<=Smax; s++) {
-                int ks = Course.isSummerTerm(s) ? 3 : 1;
-                prob.append("c"+ccount+": ");
-                ++ccount;
-                prob.append("4 x_"+i+"_"+s+" - ");
-                Iterator<String> l5codesit = l5codes.iterator();
-                while (l5codesit.hasNext()) {
-                    String js = l5codesit.next();
-                    Course l5crs = Course.getCourseByCode(js);
-                    int j = l5crs.getId();
-                    for (int t=0; t<=s-ks; t++) {
-                        prob.append("x_"+j+"_"+t);
-                        if (t<s-ks) prob.append(" - ");
-                        else {
-                            if (l5codesit.hasNext()) prob.append(" - ");
-                            else prob.append(" <= 0\n");
+        if (!group_names.contains("L-6_L-5")) {
+            prob.append("\\ 5b. L-6 constraints about L-5\n");
+            for (String l6cc : l6codes) {
+                Course l6crs = Course.getCourseByCode(l6cc);
+                int i = l6crs.getId();
+                for (int s=1; s<=Smax; s++) {
+                    int ks = Course.isSummerTerm(s) ? 3 : 1;
+                    prob.append("c"+ccount+": ");
+                    ++ccount;
+                    prob.append("4 x_"+i+"_"+s+" - ");
+                    Iterator<String> l5codesit = l5codes.iterator();
+                    while (l5codesit.hasNext()) {
+                        String js = l5codesit.next();
+                        Course l5crs = Course.getCourseByCode(js);
+                        int j = l5crs.getId();
+                        for (int t=0; t<=s-ks; t++) {
+                            prob.append("x_"+j+"_"+t);
+                            if (t<s-ks) prob.append(" - ");
+                            else {
+                                if (l5codesit.hasNext()) prob.append(" - ");
+                                else prob.append(" <= 0\n");
+                            }
                         }
                     }
                 }
@@ -524,63 +616,70 @@ public class MIPHandler {
         }
         // done with LEVEL constraints
         // 2.5 fifth, credit constraint
-        prob.append("\\ 6. total credit constraints\n");
-        final int Tc = _params.getMinReqdTotalCredits();
-        prob.append("c"+ccount+": ");
-        ++ccount;
-        for (int i=0; i<N; i++) {
-            final Course ci = Course.getCourseById(i);
-            final int credit_i = ci.getCredits();
-            prob.append(credit_i+" x_"+i);
-            if (i<N-1) prob.append(" + ");
-            else prob.append(" >= "+Tc+"\n");
+        if (!group_names.contains("CREDIT")) {
+            prob.append("\\ 6. total credit constraints\n");
+            final int Tc = _params.getMinReqdTotalCredits();
+            prob.append("c"+ccount+": ");
+            ++ccount;
+            for (int i=0; i<N; i++) {
+                final Course ci = Course.getCourseById(i);
+                final int credit_i = ci.getCredits();
+                prob.append(credit_i+" x_"+i);
+                if (i<N-1) prob.append(" + ");
+                else prob.append(" >= "+Tc+"\n");
+            }
         }
         // 2.6 sixth, LE constraint specifies the latest term number by which 
         //     all LE course requirements must be met.
-        prob.append("\\ 6.5 LE upper term limit constraints\n");
-        CourseGroup legroup = CourseGroup.getCourseGroupByName("LE");
-        List<String> lecodes = legroup.getGroupCodes();
-        int maxleterm = _params.getMaxLETerm();
-        for (int s=maxleterm+1; s<=Smax; s++) {
-            for (String lecode : lecodes) {
-                Course lec = Course.getCourseByCode(lecode);
-                if (lec==null) {  // debug
-                    throw new IllegalArgumentException("course code "+lecode+
-                                                       " in LE group doesn't"+
-                                                       " exist...");
+        if (!group_names.contains("LE_UPPER")) {
+            prob.append("\\ 6.5 LE upper term limit constraints\n");
+            CourseGroup legroup = CourseGroup.getCourseGroupByName("LE");
+            List<String> lecodes = legroup.getGroupCodes();
+            int maxleterm = _params.getMaxLETerm();
+            for (int s=maxleterm+1; s<=Smax; s++) {
+                for (String lecode : lecodes) {
+                    Course lec = Course.getCourseByCode(lecode);
+                    if (lec==null) {  // debug
+                        throw new IllegalArgumentException(
+                                    "course code "+lecode+" in LE group "+
+                                    "doesn't exist...");
+                    }
+                    prob.append("c"+ccount+": "); ++ccount;
+                    prob.append(" x_"+lec.getId()+"_"+s+" = 0\n");
                 }
-                prob.append("c"+ccount+": "); ++ccount;
-                prob.append(" x_"+lec.getId()+"_"+s+" = 0\n");
             }
         }
         // 2.7 seventh, semester credits constraint
-        prob.append("\\ 7. term credit constraints\n");
-        final int max_sem_cr = _params.getCmax(isHonorStudent);
-        final int max_summer_cr = _params.getSummerCmax(isHonorStudent);
-        for (int s=1; s<=Smax; s++) {
-            if (Course.happensDuringSummer(s) && max_summer_cr>0) {
-                // create constraint for all courses during summer months
-                // and skip the "normal" term credit constraint
-                prob.append("c"+ccount+": "); ++ccount;
-                int s2max = Math.min(Smax, s+2);
-                for (int s2=s; s2<=s2max; s2++) {
+        if (!group_names.contains("TERM_CREDIT")) {
+            prob.append("\\ 7. term credit constraints\n");
+            final int max_sem_cr = _params.getCmax(isHonorStudent);
+            final int max_summer_cr = _params.getSummerCmax(isHonorStudent);
+            for (int s=1; s<=Smax; s++) {
+                if (Course.happensDuringSummer(s) && max_summer_cr>0) {
+                    // create constraint for all courses during summer months
+                    // and skip the "normal" term credit constraint
+                    prob.append("c"+ccount+": "); ++ccount;
+                    int s2max = Math.min(Smax, s+2);
+                    for (int s2=s; s2<=s2max; s2++) {
+                        for (int i=0; i<N; i++) {
+                            int cicr = Course.getCourseById(i).getCredits();
+                            prob.append(cicr+" x_"+i+"_"+s2);
+                            if (i<N-1 || (i==N-1 && s2<s2max)) 
+                                prob.append(" + ");
+                            else prob.append(" <= "+max_summer_cr+"\n");
+                        }
+                    }
+                    s = s2max;
+                }
+                else if (!Course.happensDuringSummer(s)) {
+                    // the "normal" term credit constraint
+                    prob.append("c"+ccount+": "); ++ccount;
                     for (int i=0; i<N; i++) {
                         int cicr = Course.getCourseById(i).getCredits();
-                        prob.append(cicr+" x_"+i+"_"+s2);
-                        if (i<N-1 || (i==N-1 && s2<s2max)) prob.append(" + ");
-                        else prob.append(" <= "+max_summer_cr+"\n");
+                        prob.append(cicr+" x_"+i+"_"+s);
+                        if (i<N-1) prob.append(" + ");
+                        else prob.append(" <= "+max_sem_cr+"\n");
                     }
-                }
-                s = s2max;
-            }
-            else if (!Course.happensDuringSummer(s)) {
-                // the "normal" term credit constraint
-                prob.append("c"+ccount+": "); ++ccount;
-                for (int i=0; i<N; i++) {
-                    int cicr = Course.getCourseById(i).getCredits();
-                    prob.append(cicr+" x_"+i+"_"+s);
-                    if (i<N-1) prob.append(" + ");
-                    else prob.append(" <= "+max_sem_cr+"\n");
                 }
             }
         }
@@ -594,112 +693,185 @@ public class MIPHandler {
                     _params.getMaxNumCoursesPerTerm4Freshmen();
                 final int maxterm = 1;  // constraint only applies to the 1st 
                                         // upcoming term
-                prob.append("\\ 7.0 term #courses freshman constraints\n");
-                for (int s=1; s<=maxterm; s++) {
+                if (!group_names.contains("FRESHMAN")) {
+                    prob.append("\\ 7.0 term #courses freshman constraints\n");
+                    for (int s=1; s<=maxterm; s++) {
+                        prob.append("c"+ccount+": "); ++ccount;
+                        for (int i=0; i<N; i++) {
+                            prob.append(" x_"+i+"_"+s);
+                            if (i<N-1) prob.append(" + ");
+                            else prob.append(" <= "+maxnumcoursesperterm+"\n");
+                        }
+                    }
+                }
+            }
+        }
+        // semester max #courses constraint (student imposed)
+        if (!group_names.contains("TERM_DESIRE")) {
+            prob.append("\\ 7.1 term #courses student desire constraints\n");
+            for (int s=1; s<=Smax; s++) {
+                // ignore this value if there is a specific value in the outputs 
+                // pane
+                String cons = numCoursesPerTrm2StrMap.get(1);
+                if (cons!=null && cons.length()>0) continue;             
+                prob.append("c"+ccount+": "); ++ccount;
+                for (int i=0; i<N; i++) {
+                    prob.append(" x_"+i+"_"+s);
+                    if (i<N-1) prob.append(" + ");
+                    else prob.append(" <= "+maxNumCrsPerSem+"\n");
+                }
+            }
+            // add constraints for #courses on terms the student specified
+            Iterator<Integer> tit = numCoursesPerTrm2StrMap.keySet().iterator();
+            while (tit.hasNext()) {
+                int tno = tit.next();
+                String cons = numCoursesPerTrm2StrMap.get(tno);
+                if (cons==null || cons.length()==0) continue;
+                cons = cons.trim();
+                int numc = Integer.MIN_VALUE;
+                try {
+                    numc = Integer.parseInt(cons);
+                    cons = " = "+numc;
+                }
+                catch (NumberFormatException e) {
+                    // ensure comparison operator and number have a space between
+                    if (cons.matches("[<>]=[0-9]+")) {
+                        cons = cons.substring(0,2)+" "+cons.substring(2);
+                    }
+                    else if (cons.matches("[<>=][0-9]+")) {
+                        cons = cons.substring(0,1)+" "+cons.substring(1);
+                    }
+                }
+                // cannot send string as is to the constraint as strict inequalities
+                // "<" or ">" are not supported.
+                if (cons.startsWith("<") && !cons.startsWith("<=")) {
+                    numc = Integer.parseInt(cons.substring(1).trim());  
+                    // itc20241112: trim needed because cannot parse string " 4"
+                    cons = "<= " + (numc-1);
+                }
+                else if (cons.startsWith(">") && !cons.startsWith(">=")) {
+                    numc = Integer.parseInt(cons.substring(1).trim());
+                    // itc20241112: trim needed because cannot parse string " 4"                
+                    cons = ">= " + (numc+1);
+                }
+                prob.append("c"+ccount+": "); ++ccount;
+                for (int i=0; i<N; i++) {
+                    prob.append(" x_"+i+"_"+tno);
+                    if (i<N-1) prob.append(" + ");
+                    else prob.append(" " + cons + "\n");
+                }
+            }
+        }
+        // thesis semester max #courses constraints (student imposed):
+        // Σ_{i!=θ} x_{i,s} <= σ x_{θ,s} + M(1-x_{θ,s})  forall s=1...Smax
+        // notice that there may be more than one possible thesis code for a
+        // program: the constraint holds for each code separately, PLUS
+        // there is a constraint specifying the student may only take one of
+        // these these thesis courses
+        --maxNumCrsDurThesis;
+        final int Mms = _params.getCmax(isHonorStudent) - maxNumCrsDurThesis;
+        Set<String> thesisCodes = _params.getThesisCodes();
+        for (String thesisCode : thesisCodes) {
+            Course thesis = Course.getCourseByCode(thesisCode);
+            int thesis_id = thesis.getId();
+            if (!group_names.contains("THESIS")) {
+                prob.append("\\ 7.2 THESIS term #courses student desire "+
+                            "constraints\n");
+                for (int s=1; s<=Smax; s++) {
                     prob.append("c"+ccount+": "); ++ccount;
                     for (int i=0; i<N; i++) {
-                        prob.append(" x_"+i+"_"+s);
+                        if (i!=thesis_id) prob.append(" x_"+i+"_"+s);
+                        else prob.append(Mms + " x_"+i+"_"+s);
                         if (i<N-1) prob.append(" + ");
-                        else prob.append(" <= "+maxnumcoursesperterm+"\n");
+                        else prob.append(" <= "+_params.getCmax(isHonorStudent)+
+                                         "\n");
+                    }
+                }
+            }
+        }
+        if (thesisCodes.size()==0) {  
+            // maybe only the old ProgramThesisCode is in props file
+            String thesisCode = _params.getThesisCode();
+            if (thesisCode!=null) {
+                Course thesis = Course.getCourseByCode(thesisCode);
+                int thesis_id = thesis.getId();
+                if (!group_names.contains("THESIS")) {
+                    prob.append("\\ 7.2 THESIS term #courses student desire "+
+                                "constraints\n");
+                    for (int s=1; s<=Smax; s++) {
+                        prob.append("c"+ccount+": "); ++ccount;
+                        for (int i=0; i<N; i++) {
+                            if (i!=thesis_id) prob.append(" x_"+i+"_"+s);
+                            else prob.append(Mms + " x_"+i+"_"+s);
+                            if (i<N-1) prob.append(" + ");
+                            else prob.append(" <= "+
+                                             _params.getCmax(isHonorStudent)+
+                                             "\n");
+                        }
                     }
                 }            
             }
         }
-        // semester max #courses constraint (student imposed)
-        prob.append("\\ 7.1 term #courses student desire constraints\n");
-        for (int s=1; s<=Smax; s++) {
-            // ignore this value if there is a specific value in the outputs 
-            // pane
-            String cons = numCoursesPerTrm2StrMap.get(1);
-            if (cons!=null && cons.length()>0) continue;             
-            prob.append("c"+ccount+": "); ++ccount;
-            for (int i=0; i<N; i++) {
-                prob.append(" x_"+i+"_"+s);
-                if (i<N-1) prob.append(" + ");
-                else prob.append(" <= "+maxNumCrsPerSem+"\n");
+        // specify that only one of the theses codes may be taken
+        if (thesisCodes.size()>1) {
+            prob.append("c"+ccount+": "); ++ccount; 
+            Iterator<String> it = thesisCodes.iterator();
+            while (it.hasNext()) {
+                String thesisCode = it.next();
+                Course t = Course.getCourseByCode(thesisCode);
+                prob.append(" x_"+t.getId());
+                if (it.hasNext()) prob.append(" + ");
+                else prob.append(" = 1\n");
             }
         }
-        // add constraints for #courses on terms the student specified
-        Iterator<Integer> tit = numCoursesPerTrm2StrMap.keySet().iterator();
-        while (tit.hasNext()) {
-            int tno = tit.next();
-            String cons = numCoursesPerTrm2StrMap.get(tno);
-            if (cons==null || cons.length()==0) continue;
-            cons = cons.trim();
-            int numc = Integer.MIN_VALUE;
-            try {
-                numc = Integer.parseInt(cons);
-                cons = " = "+numc;
-            }
-            catch (NumberFormatException e) {
-                // ensure comparison operator and number have a space between
-                if (cons.matches("[<>]=[0-9]+")) {
-                    cons = cons.substring(0,2)+" "+cons.substring(2);
+        if (!group_names.contains("SUMMER")) {
+            prob.append("\\ 7.5 summer max #concurrent-courses constraint\n");
+            final int nmax = _params.getSummerConcNMax();
+            final int n12max = _params.getSummer12ConcNMax();
+            for (int s=1; s<=Smax; s++) {
+                if (Course.isSummer1Term(s) && n12max>=0) {
+                    prob.append("c"+ccount+": "); ++ccount;
+                    // create constraint for all courses during S1
+                    for (int i=0; i<N; i++) {
+                        prob.append("x_"+i+"_"+s);
+                        if (i<N-1) prob.append(" + ");
+                        else prob.append(" <= "+n12max+"\n");
+                    }                    
                 }
-                else if (cons.matches("[<>=][0-9]+")) {
-                    cons = cons.substring(0,1)+" "+cons.substring(1);
+                if (Course.isSummer2Term(s) && n12max>=0) {
+                    prob.append("c"+ccount+": "); ++ccount;
+                    // create constraint for all courses during S2
+                    for (int i=0; i<N; i++) {
+                        prob.append("x_"+i+"_"+s);
+                        if (i<N-1) prob.append(" + ");
+                        else prob.append(" <= "+n12max+"\n");
+                    }                    
                 }
-            }
-            // cannot send string as is to the constraint as strict inequalities
-            // "<" or ">" are not supported.
-            if (cons.startsWith("<") && !cons.startsWith("<=")) {
-                numc = Integer.parseInt(cons.substring(1));
-                cons = "<= " + (numc-1);
-            }
-            else if (cons.startsWith(">") && !cons.startsWith(">=")) {
-                numc = Integer.parseInt(cons.substring(1));
-                cons = ">= " + (numc+1);
-            }
-            prob.append("c"+ccount+": "); ++ccount;
-            for (int i=0; i<N; i++) {
-                prob.append(" x_"+i+"_"+tno);
-                if (i<N-1) prob.append(" + ");
-                else prob.append(" " + cons + "\n");
-            }
-        }
-        // thesis semester max #courses constraint (student imposed):
-        // Σ_{i!=θ} x_{i,s} <= σ x_{θ,s} + M(1-x_{θ,s})  forall s=1...Smax
-        --maxNumCrsDurThesis;
-        final int Mms = _params.getCmax(isHonorStudent) - maxNumCrsDurThesis;
-        Course thesis = Course.getCourseByCode(_params.getThesisCode());
-        int thesis_id = thesis.getId();
-        prob.append("\\ 7.2 THESIS term #courses student desire constraints\n");
-        for (int s=1; s<=Smax; s++) {
-            prob.append("c"+ccount+": "); ++ccount;
-            for (int i=0; i<N; i++) {
-                if (i!=thesis_id) prob.append(" x_"+i+"_"+s);
-                else prob.append(Mms + " x_"+i+"_"+s);
-                if (i<N-1) prob.append(" + ");
-                else prob.append(" <= "+_params.getCmax(isHonorStudent)+"\n");
-            }
-        }
-        prob.append("\\ 7.5 summer max #concurrent-courses constraint\n");
-        final int nmax = _params.getSummerConcNMax();
-        for (int s=1; s<=Smax; s++) {
-            if (Course.happensDuringSummer(s) && nmax>=0 && s+2<=Smax) {
-                prob.append("c"+ccount+": "); ++ccount;
-                // create constraint for all courses during S1+ST
-                for (int i=0; i<N; i++) {
-                    prob.append("x_"+i+"_"+s+" + ");
+                if (Course.happensDuringSummer(s) && nmax>=0 && s+2<=Smax) {
+                    prob.append("c"+ccount+": "); ++ccount;
+                    // create constraint for all courses during S1+ST
+                    for (int i=0; i<N; i++) {
+                        prob.append("x_"+i+"_"+s+" + ");
+                    }
+                    int st = s+2;
+                    for (int i=0; i<N; i++) {
+                        prob.append("x_"+i+"_"+st);
+                        if (i<N-1) prob.append(" + ");
+                        else prob.append(" <= "+nmax+"\n");
+                    }
+                    // create constraint for all courses during S2+ST
+                    int s2 = s+1;
+                    prob.append("c"+ccount+": "); ++ccount;
+                    for (int i=0; i<N; i++) {
+                        prob.append("x_"+i+"_"+s2+" + ");
+                    }
+                    for (int i=0; i<N; i++) {
+                        prob.append("x_"+i+"_"+st);
+                        if (i<N-1) prob.append(" + ");
+                        else prob.append(" <= "+nmax+"\n");
+                    }
+                    s += 2;
                 }
-                int st = s+2;
-                for (int i=0; i<N; i++) {
-                    prob.append("x_"+i+"_"+st);
-                    if (i<N-1) prob.append(" + ");
-                    else prob.append(" <= "+nmax+"\n");
-                }
-                // create constraint for all courses during S2+ST
-                int s2 = s+1;
-                prob.append("c"+ccount+": "); ++ccount;
-                for (int i=0; i<N; i++) {
-                    prob.append("x_"+i+"_"+s2+" + ");
-                }
-                for (int i=0; i<N; i++) {
-                    prob.append("x_"+i+"_"+st);
-                    if (i<N-1) prob.append(" + ");
-                    else prob.append(" <= "+nmax+"\n");
-                }
-                s += 2;
             }
         }
         // 2.8 eightth, x_i definition
@@ -714,8 +886,8 @@ public class MIPHandler {
             }
         }
         // 2.9 ninth, group credits and min num course definitions
-        //     Notice that groups representing concentration areas are treated
-        //     differently.
+        //     Notice that groups representing concentration areas and others 
+        //     are treated differently.
         Iterator<String> gnamesit = CourseGroup.getCourseGroupNameIterator();
         while (gnamesit.hasNext()) {
             final String groupname = gnamesit.next();
@@ -723,29 +895,159 @@ public class MIPHandler {
             if (cg.isConcentrationArea()) continue;  // don't do anything here
             if (cg.isCapstoneProjectGroup()) continue;  // don't do anything now
             if (cg.isSoftOrderPrecedenceConstraint()) continue;  // same here
+            if (cg.isHonorStudentCourseGroup() && !isHonorStudent) {
+                System.err.println("MIPHandler.createMIPFile(): skipping "+
+                                   groupname+" from 2.9 "+
+                                   "due to non-honor student");  // debug
+                continue;  // and here
+            }
             if (cg.isOUConstraint()) continue;  // again!
-            prob.append("\\ group "+groupname+" constraints\n");
-            final int cgc = cg.getMinNumCreditsReqd();
-            int cgn = cg.getMinNumCoursesReqd();
-            if (cgn>=0) {
-                if (!cg.isCoursesReqdExact() && cgn>0) {  // normal constraint
-                    prob.append("c"+ccount+": ");
-                    ++ccount;
-                    List<String> crss = cg.getGroupCodes();
-                    Iterator<String> crss_it = crss.iterator();
-                    while (crss_it.hasNext()) {
-                        String crscode = crss_it.next();
-                        Course crs = Course.getCourseByCode(crscode);
-                        int crs_id = crs.getId();
-                        prob.append("x_"+crs_id);
-                        if (crss_it.hasNext()) prob.append(" + ");
-                        else prob.append(" >= "+cgn+"\n");
+            if (cg.getTargetCode()!=null) {
+                System.err.println("MIPHandler.createMIPFile(): skipping "+
+                                   groupname+" from 2.9 due to target="+
+                                   cg.getTargetCode());  // debug
+                continue;
+            }  // and again!
+            if (!anyOfStartsWith(group_names, groupname)) {
+                prob.append("\\ group "+groupname+" constraints\n");
+                final int cgc = cg.getMinNumCreditsReqd();
+                int cgn = cg.getMinNumCoursesReqd();
+                if (cgn>=0) {
+                    if (!cg.isCoursesReqdExact() && cgn>0) {  // normal constraint
+                        prob.append("c"+ccount+": ");
+                        ++ccount;
+                        List<String> crss = cg.getGroupCodes();
+                        Iterator<String> crss_it = crss.iterator();
+                        while (crss_it.hasNext()) {
+                            String crscode = crss_it.next();
+                            Course crs = Course.getCourseByCode(crscode);
+                            if (crs==null) {  // warn user in stderr
+                                System.err.println("course "+crscode+
+                                                   " mentioned in group "+groupname+
+                                                   " does not exist...");
+                            }
+                            int crs_id = crs.getId();
+                            prob.append("x_"+crs_id);
+                            if (crss_it.hasNext()) prob.append(" + ");
+                            else {
+                                if (cg.isSoftConstraint()) {
+                                    prob.append(" + ");
+                                    prob.append(cg.getSlackVarName());
+                                }
+                                prob.append(" >= "+cgn+"\n");
+                            }
+                        }
+                    }
+                    else if (cg.isCoursesReqdExact()) {  // XOR-type constraint
+                        // remove from course-group every course that is already
+                        // passed, and for the remaining courses, make their sum 
+                        // equal to the remaining cgn_{+} number.
+                        Set<String> crss = new HashSet(cg.getGroupCodes());
+                        Iterator<String> crss_it = crss.iterator();
+                        while (crss_it.hasNext()) {
+                            String crscode = crss_it.next();
+                            if (_passed.contains(crscode)) { 
+                                crss_it.remove();
+                                --cgn; 
+                            }
+                        }
+                        if (cgn<0) cgn = 0;
+                        if (crss.size()>0) {
+                            // for the remaining courses in crss, act as original
+                            // due to slack constraints, turn the equality into
+                            // two inequality constraints!
+                            prob.append("c"+ccount+": ");
+                            ++ccount;
+                            crss_it = crss.iterator();
+                            while (crss_it.hasNext()) {
+                                String crscode = crss_it.next();
+                                Course crs = Course.getCourseByCode(crscode);
+                                // debug
+                                if (crs==null) {
+                                    System.err.print("In group "+cg.getGroupName());
+                                    System.err.println(": Course code "+crscode+
+                                                       " not found");
+                                    throw new IllegalStateException("course miss");
+                                }
+                                int crs_id = crs.getId();
+                                prob.append("x_"+crs_id);
+                                if (crss_it.hasNext()) prob.append(" + ");
+                                else {
+                                    if (cg.isSoftConstraint()) {
+                                        prob.append(" + ");
+                                        prob.append(cg.getSlackVarName());
+                                    }
+                                    prob.append(" >= "+cgn+"\n");
+                                }
+                            }
+                            // now the <= constraint
+                            prob.append("c"+ccount+": ");
+                            ++ccount;
+                            crss_it = crss.iterator();
+                            while (crss_it.hasNext()) {
+                                String crscode = crss_it.next();
+                                Course crs = Course.getCourseByCode(crscode);
+                                // debug
+                                if (crs==null) {
+                                    System.err.print("In group "+cg.getGroupName());
+                                    System.err.println(": Course code "+crscode+
+                                                       " not found");
+                                    throw new IllegalStateException("course miss");
+                                }
+                                int crs_id = crs.getId();
+                                prob.append("x_"+crs_id);
+                                if (crss_it.hasNext()) prob.append(" + ");
+                                else {
+                                    if (cg.isSoftConstraint()) {
+                                        prob.append(" - ");
+                                        prob.append(cg.getSlackVarName());
+                                    }
+                                    prob.append(" <= "+cgn+"\n");
+                                }
+                            }                            
+                        }
+                    }
+                    else if (cg.isHoldsPerSemester()) {  // MAX-type constraint
+                        // constraint holds for per every semester
+                        Set<String> crss = new HashSet(cg.getGroupCodes());
+                        int s2max = -1;
+                        for (int s=1; s<=Smax; s++) {
+                            prob.append("c").append(ccount).append(": ");
+                            ++ccount;
+                            if (Course.happensDuringSummer(s)) {  
+                                // this code assumes that s=1 is NEVER "S2" or "ST"
+                                // terms.
+                                s2max = Math.min(Smax, s+2);
+                                for (int s2=s; s2<=s2max; s2++) {
+                                    Iterator<String> crss_it = crss.iterator();
+                                    while (crss_it.hasNext()) {
+                                        String crs = crss_it.next();
+                                        Course c = Course.getCourseByCode(crs);
+                                        prob.append(" x_"+c.getId()+"_"+s);
+                                        if (!crss_it.hasNext() && s2==s2max) 
+                                            prob.append(" <= "+cgn+"\n");
+                                        else prob.append(" + ");
+                                    }
+                                }
+                                s = s2max;
+                                continue;
+                            }
+                            Iterator<String> crss_it = crss.iterator();
+                            while (crss_it.hasNext()) {
+                                String crs = crss_it.next();
+                                Course c = Course.getCourseByCode(crs);
+                                prob.append(" x_"+c.getId()+"_"+s);
+                                if (crss_it.hasNext()) prob.append(" + ");
+                                else prob.append(" <= "+cgn+"\n");
+                            }
+                        }
                     }
                 }
-                else if (cg.isCoursesReqdExact()) {  // XOR-type constraint
+                else {  // cgn < 0 implies constraint: x_i_1 +...+ x_j_Smax <= -cgn
+                    cgn = -cgn;  // reverse sign
                     // remove from course-group every course that is already
                     // passed, and for the remaining courses, make their sum 
-                    // equal to the remaining cgn_{+} number.
+                    // less than or equal to the remaining cgn_{+} number.
                     Set<String> crss = new HashSet(cg.getGroupCodes());
                     Iterator<String> crss_it = crss.iterator();
                     while (crss_it.hasNext()) {
@@ -756,168 +1058,108 @@ public class MIPHandler {
                         }
                     }
                     if (cgn<0) cgn = 0;
-                    if (crss.size()>0) {
-                        // for the remaining courses in crss, act as original
+                    if (!cg.isCoursesReqdExact() && !cg.isHoldsPerSemester() && 
+                        cgn>0) {  // constraint asks for a maximum to be respected
                         prob.append("c"+ccount+": ");
                         ++ccount;
                         crss_it = crss.iterator();
                         while (crss_it.hasNext()) {
                             String crscode = crss_it.next();
                             Course crs = Course.getCourseByCode(crscode);
-                            // debug
-                            if (crs==null) {
-                                System.err.print("In group "+cg.getGroupName());
-                                System.err.println(": Course code "+crscode+
-                                                   " not found");
-                                throw new IllegalStateException("course miss");
-                            }
                             int crs_id = crs.getId();
                             prob.append("x_"+crs_id);
                             if (crss_it.hasNext()) prob.append(" + ");
-                            else prob.append(" = "+cgn+"\n");
-                        }                        
-                    }
-                }
-                else if (cg.isHoldsPerSemester()) {  // MAX-type constraint
-                    // constraint holds for per every semester
-                    Set<String> crss = new HashSet(cg.getGroupCodes());
-                    int s2max = -1;
-                    for (int s=1; s<=Smax; s++) {
-                        prob.append("c").append(ccount).append(": ");
-                        ++ccount;
-                        if (Course.happensDuringSummer(s)) {  
-                            // this code assumes that s=1 is NEVER "S2" or "ST"
-                            // terms.
-                            s2max = Math.min(Smax, s+2);
-                            for (int s2=s; s2<=s2max; s2++) {
-                                Iterator<String> crss_it = crss.iterator();
-                                while (crss_it.hasNext()) {
-                                    String crs = crss_it.next();
-                                    Course c = Course.getCourseByCode(crs);
-                                    prob.append(" x_"+c.getId()+"_"+s);
-                                    if (!crss_it.hasNext() && s2==s2max) 
-                                        prob.append(" <= "+cgn+"\n");
-                                    else prob.append(" + ");
+                            else {
+                                if (cg.isSoftConstraint()) {
+                                    prob.append(" - ");
+                                    prob.append(cg.getSlackVarName());
                                 }
+                                prob.append(" <= "+cgn+"\n");
                             }
-                            s = s2max;
-                            continue;
-                        }
-                        Iterator<String> crss_it = crss.iterator();
-                        while (crss_it.hasNext()) {
-                            String crs = crss_it.next();
-                            Course c = Course.getCourseByCode(crs);
-                            prob.append(" x_"+c.getId()+"_"+s);
-                            if (crss_it.hasNext()) prob.append(" + ");
-                            else prob.append(" <= "+cgn+"\n");
                         }
                     }
                 }
-            }
-            else {  // cgn < 0 implies constraint: x_i_1 +...+ x_j_Smax <= -cgn
-                cgn = -cgn;  // reverse sign
-                // remove from course-group every course that is already
-                // passed, and for the remaining courses, make their sum 
-                // less than or equal to the remaining cgn_{+} number.
-                Set<String> crss = new HashSet(cg.getGroupCodes());
-                Iterator<String> crss_it = crss.iterator();
-                while (crss_it.hasNext()) {
-                    String crscode = crss_it.next();
-                    if (_passed.contains(crscode)) { 
-                        crss_it.remove();
-                        --cgn; 
-                    }
-                }
-                if (cgn<0) cgn = 0;
-                if (!cg.isCoursesReqdExact() && !cg.isHoldsPerSemester() && 
-                    cgn>0) {  // constraint asks for a maximum to be respected
+                if (cgc>0) {
                     prob.append("c"+ccount+": ");
                     ++ccount;
-                    crss_it = crss.iterator();
+                    List<String> crss = cg.getGroupCodes();
+                    Iterator<String> crss_it = crss.iterator();
                     while (crss_it.hasNext()) {
                         String crscode = crss_it.next();
                         Course crs = Course.getCourseByCode(crscode);
+                        if (crs==null) {
+                            throw new IllegalStateException("for group constraint "+
+                                                            groupname+" course "+
+                                                            crscode+" not found");
+                        }
                         int crs_id = crs.getId();
-                        prob.append("x_"+crs_id);
+                        int crs_cr = crs.getCredits();
+                        prob.append(crs_cr+" x_"+crs_id);
                         if (crss_it.hasNext()) prob.append(" + ");
-                        else prob.append(" <= "+cgn+"\n");
-                    }
+                        else {
+                            if (cg.isSoftConstraint()) {
+                                prob.append(" + ");
+                                prob.append(cg.getSlackVarName());
+                            }                           
+                            prob.append(" >= "+cgc+"\n");
+                        }
+                    }                
                 }
-            }
-            if (cgc>0) {
-                prob.append("c"+ccount+": ");
-                ++ccount;
-                List<String> crss = cg.getGroupCodes();
-                Iterator<String> crss_it = crss.iterator();
-                while (crss_it.hasNext()) {
-                    String crscode = crss_it.next();
-                    Course crs = Course.getCourseByCode(crscode);
-                    if (crs==null) {
-                        throw new IllegalStateException("for group constraint "+
-                                                        groupname+" course "+
-                                                        crscode+" not found");
+                // #different disciplines constraint
+                final int mnd = cg.getMinNumDisciplines();
+                if (mnd>1) {
+                    List<String> crss = cg.getGroupCodes();
+                    HashMap<String, List<String>> discMap = new HashMap<>();
+                    for (String cc : crss) {
+                        String disc_code = Course.getProgramCode(cc);
+                        discVarNames.add("w_"+disc_code);
+                        if (!discMap.containsKey(disc_code)) {
+                            discMap.put(disc_code, new ArrayList<String>());
+                        }
+                        List<String> disc_courses = discMap.get(disc_code);
+                        disc_courses.add(cc);
                     }
-                    int crs_id = crs.getId();
-                    int crs_cr = crs.getCredits();
-                    prob.append(crs_cr+" x_"+crs_id);
-                    if (crss_it.hasNext()) prob.append(" + ");
-                    else prob.append(" >= "+cgc+"\n");
-                }                
-            }
-            // #different disciplines constraint
-            final int mnd = cg.getMinNumDisciplines();
-            if (mnd>1) {
-                List<String> crss = cg.getGroupCodes();
-                HashMap<String, List<String>> discMap = new HashMap<>();
-                for (String cc : crss) {
-                    String disc_code = Course.getProgramCode(cc);
-                    discVarNames.add("w_"+disc_code);
-                    if (!discMap.containsKey(disc_code)) {
-                        discMap.put(disc_code, new ArrayList<String>());
+                    // now that we have all our disciplines, let's write the 
+                    // constraints. Basically, we need one binary variable for each
+                    // discipline that is one if there is at least one course from 
+                    // that discipline, and zero otherwise, and we need to set the 
+                    // sum of these binary variables to being greater than the value 
+                    // mnd above.
+                    Iterator<String> disc_it = discMap.keySet().iterator();
+                    while (disc_it.hasNext()) {
+                        String disc = disc_it.next();
+                        prob.append("c"+ccount+": ");
+                        ++ccount;
+                        List<String> disc_crss = discMap.get(disc);
+                        final int n = disc_crss.size();
+                        for (int i=0; i<n; i++) {
+                            String crs = disc_crss.get(i);
+                            Course c = Course.getCourseByCode(crs);
+                            prob.append("x_"+c.getId()+" ");
+                            if (i<disc_crss.size()-1) prob.append(" + ");
+                            else prob.append(" - "+n+" w_"+disc+" <= 0\n");
+                        }
+                        prob.append("c"+ccount+": ");
+                        ++ccount;
+                        for (int i=0; i<n; i++) {
+                            String crs = disc_crss.get(i);
+                            Course c = Course.getCourseByCode(crs);
+                            prob.append("x_"+c.getId());
+                            if (i<disc_crss.size()-1) prob.append(" + ");
+                            else prob.append(" - "+" w_"+disc+" >= 0\n");
+                        }                    
                     }
-                    List<String> disc_courses = discMap.get(disc_code);
-                    disc_courses.add(cc);
-                }
-                // now that we have all our disciplines, let's write the 
-                // constraints. Basically, we need one binary variable for each
-                // discipline that is one if there is at least one course from 
-                // that discipline, and zero otherwise, and we need to set the 
-                // sum of these binary variables to being greater than the value 
-                // mnd above.
-                Iterator<String> disc_it = discMap.keySet().iterator();
-                while (disc_it.hasNext()) {
-                    String disc = disc_it.next();
+                    // finally, sum of the binary vars must be greater than mnd
                     prob.append("c"+ccount+": ");
                     ++ccount;
-                    List<String> disc_crss = discMap.get(disc);
-                    final int n = disc_crss.size();
-                    for (int i=0; i<n; i++) {
-                        String crs = disc_crss.get(i);
-                        Course c = Course.getCourseByCode(crs);
-                        prob.append("x_"+c.getId()+" ");
-                        if (i<disc_crss.size()-1) prob.append(" + ");
-                        else prob.append(" - "+n+" w_"+disc+" <= 0\n");
-                    }
-                    prob.append("c"+ccount+": ");
-                    ++ccount;
-                    for (int i=0; i<n; i++) {
-                        String crs = disc_crss.get(i);
-                        Course c = Course.getCourseByCode(crs);
-                        prob.append("x_"+c.getId());
-                        if (i<disc_crss.size()-1) prob.append(" + ");
-                        else prob.append(" - "+" w_"+disc+" >= 0\n");
-                    }                    
+                    disc_it = discMap.keySet().iterator();
+                    while (disc_it.hasNext()) {
+                        String d = disc_it.next();
+                        prob.append("w_"+d);
+                        if (disc_it.hasNext()) prob.append(" + ");
+                        else prob.append(" >= "+mnd+"\n");
+                    }  
                 }
-                // finally, the sum of the binary vars must be greater than mnd
-                prob.append("c"+ccount+": ");
-                ++ccount;
-                disc_it = discMap.keySet().iterator();
-                while (disc_it.hasNext()) {
-                    String d = disc_it.next();
-                    prob.append("w_"+d);
-                    if (disc_it.hasNext()) prob.append(" + ");
-                    else prob.append(" >= "+mnd+"\n");
-                }  
             }
         }
         // 2.10 tenth, the passed courses
@@ -941,78 +1183,82 @@ public class MIPHandler {
             }
         }
         // 2.11 eleventh, the desired courses
-        prob.append("\\ desired courses constraints\n");
-        Iterator<String> desired_it = _desired.getDesiredCourseCodesIterator();
-        while (desired_it.hasNext()) {
-            String dcode = desired_it.next();
-            Course dc = Course.getCourseByCode(dcode);
-            int cid = dc.getId();
-            int curTrm = 0;
-            if (_cid2tnoMap!=null) curTrm = _cid2tnoMap.getOrDefault(cid, 0);
-            Set<Integer> allowed_terms = _desired.getAllowedTerms4Course(dcode, 
-                                                                         curTrm,
-                                                                         Smax);
-            if (allowed_terms.size()==Smax) {  // all terms allowed
-                prob.append("c"+ccount+": ");
-                ++ccount;
-                int id = dc.getId();
-                prob.append("x_"+id+" = 1\n");
-            }
-            else if (allowed_terms.size()==0) {  // course is "disallowed"
-                prob.append("c"+ccount+": ");
-                ++ccount;
-                int id = dc.getId();
-                prob.append("x_"+id+" = 0\n");                
-            } 
-            else {  // to only allow course on the specified terms, disallow
-                    // every term not specified, and request x_id = 1
-                final int id = dc.getId();
-                prob.append("c"+ccount+": ");
-                ++ccount;
-                prob.append("x_"+id+" = 1\n"); 
-                // disallow not allowed semesters
-                for (int i=1; i<=Smax; i++) {
-                    if (!allowed_terms.contains(i)) {
-                        prob.append("c"+ccount+": "); ++ccount;
-                        prob.append("x_"+id+"_"+i+" = 0\n");
+        if (!group_names.contains("desired")) {
+            prob.append("\\ desired courses constraints\n");
+            Iterator<String> desired_it = 
+                    _desired.getDesiredCourseCodesIterator();
+            while (desired_it.hasNext()) {
+                String dcode = desired_it.next();
+                Course dc = Course.getCourseByCode(dcode);
+                int cid = dc.getId();
+                int curTrm = 0;
+                if (_cid2tnoMap!=null) curTrm = _cid2tnoMap.getOrDefault(cid,0);
+                Set<Integer> preferred_terms = 
+                        _desired.getPreferredTerms4Course(dcode, curTrm, Smax);
+                if (preferred_terms.size()==Smax) {  // all terms allowed
+                    prob.append("c"+ccount+": ");
+                    ++ccount;
+                    int id = dc.getId();
+                    prob.append("x_"+id+" = 1\n");
+                }
+                else if (preferred_terms.size()==0) {  // course is "disallowed"
+                    prob.append("c"+ccount+": ");
+                    ++ccount;
+                    int id = dc.getId();
+                    prob.append("x_"+id+" = 0\n");                
+                } 
+                else {  // to only allow course on the specified terms, disallow
+                        // every term not specified, and request x_id = 1
+                    final int id = dc.getId();
+                    prob.append("c"+ccount+": ");
+                    ++ccount;
+                    prob.append("x_"+id+" = 1\n"); 
+                    // disallow not allowed semesters
+                    for (int i=1; i<=Smax; i++) {
+                        if (!preferred_terms.contains(i)) {
+                            prob.append("c"+ccount+": "); ++ccount;
+                            prob.append("x_"+id+"_"+i+" = 0\n");
+                        }
                     }
                 }
             }
         }
         // 2.12 twelfth, summer-terms off constraints
-        prob.append("\\ summer terms off constraints\n");
-        if (s1off) {
-            for (int s=1; s<=Smax; s++) {
-                if (Course.isSummerTerm(s+2)) {
-                    for (int i=0; i<N; i++) {
-                        prob.append("c").append(ccount).append(": ").
-                            append("x_").append(i).append("_").append(s).
-                                append(" = 0\n");
-                        ++ccount;
+        if (!group_names.contains("summer")) {
+            prob.append("\\ summer terms off constraints\n");
+            if (s1off) {
+                for (int s=1; s<=Smax; s++) {
+                    if (Course.isSummerTerm(s+2)) {
+                        for (int i=0; i<N; i++) {
+                            prob.append("c").append(ccount).append(": ").
+                                append("x_").append(i).append("_").append(s).
+                                    append(" = 0\n");
+                            ++ccount;
+                        }
                     }
                 }
             }
-        }
-        if (s2off) {
-            for (int s=1; s<=Smax; s++) {
-                if (Course.isSummerTerm(s+1)) {
-                    for (int i=0; i<N; i++) {
-                        prob.append("c").append(ccount).append(": ").
-                            append("x_").append(i).append("_").append(s).
-                                append(" = 0\n");
-                        ++ccount;
+            if (s2off) {
+                for (int s=1; s<=Smax; s++) {
+                    if (Course.isSummerTerm(s+1)) {
+                        for (int i=0; i<N; i++) {
+                            prob.append("c").append(ccount).append(": ").
+                                append("x_").append(i).append("_").append(s).
+                                    append(" = 0\n");
+                            ++ccount;
+                        }
                     }
                 }
             }
-        }
-        if (stoff) {
-            for (int s=1; s<=Smax; s++) {
-                if (Course.isSummerTerm(s)) {
-                    for (int i=0; i<N; i++) {
-                        prob.append("c").append(ccount).append(": ").
-                            append("x_").append(i).append("_").append(s).
-                                append(" = 0\n");
-                        ++ccount;
+            if (stoff) {
+                for (int s=1; s<=Smax; s++) {
+                    if (Course.isSummerTerm(s)) {
+                        for (int i=0; i<N; i++) {
+                            prob.append("c").append(ccount).append(": ").
+                                append("x_").append(i).append("_").append(s).
+                                    append(" = 0\n");
+                            ++ccount;
+                        }
                     }
                 }
             }
@@ -1025,104 +1271,117 @@ public class MIPHandler {
         Iterator<String> conc_groups = CourseGroup.getCourseGroupNameIterator();
         while (conc_groups.hasNext()) {
             String conc_name = conc_groups.next();
-            if (conc_name.startsWith(concentration)) {  // enforce constraint
-                CourseGroup ccg = CourseGroup.getCourseGroupByName(conc_name);
-                if (!ccg.isConcentrationArea()) continue;  // bad name choice
-                int cgn = ccg.getMinNumCoursesReqd();
-                if (cgn>0) {
-                    List<String> ccodes = ccg.getGroupCodes();
-                    prob.append("c"+ccount+": "); ++ccount;
-                    Iterator<String> codes_it = ccodes.iterator();
-                    while (codes_it.hasNext()) {
-                        String code = codes_it.next();
-                        Course cc = Course.getCourseByCode(code);
-                        prob.append(" x_"+cc.getId()+" ");
-                        if (codes_it.hasNext()) prob.append("+ ");
-                        else prob.append(">= "+cgn+"\n");
+            if (!group_names.contains(conc_name)) {
+                if (conc_name.startsWith(concentration)) {  // enforce constraint
+                    CourseGroup ccg = CourseGroup.getCourseGroupByName(conc_name);
+                    if (!ccg.isConcentrationArea()) continue;  // bad name choice
+                    if (ccg.getTargetCode()!=null) {  // inconsistency
+                        throw new Error("Concentration "+concentration+
+                                        " area group has "+ccg.getTargetCode()+
+                                        " target class code?");
                     }
-                }
-                int cgc = ccg.getMinNumCreditsReqd();
-                if (cgc>0) {
-                    List<String> ccodes = ccg.getGroupCodes();
-                    prob.append("c"+ccount+": "); ++ccount;
-                    Iterator<String> codes_it = ccodes.iterator();
-                    while (codes_it.hasNext()) {
-                        String code = codes_it.next();
-                        Course cc = Course.getCourseByCode(code);
-                        prob.append(cc.getCredits()+" x_"+cc.getId()+" ");
-                        if (codes_it.hasNext()) prob.append("+ ");
-                        else prob.append(">= "+cgc+"\n");
-                    }                    
+                    int cgn = ccg.getMinNumCoursesReqd();
+                    if (cgn>0) {
+                        List<String> ccodes = ccg.getGroupCodes();
+                        prob.append("c"+ccount+": "); ++ccount;
+                        Iterator<String> codes_it = ccodes.iterator();
+                        while (codes_it.hasNext()) {
+                            String code = codes_it.next();
+                            Course cc = Course.getCourseByCode(code);
+                            prob.append(" x_"+cc.getId()+" ");
+                            if (codes_it.hasNext()) prob.append("+ ");
+                            else prob.append(">= "+cgn+"\n");
+                        }
+                    }
+                    int cgc = ccg.getMinNumCreditsReqd();
+                    if (cgc>0) {
+                        List<String> ccodes = ccg.getGroupCodes();
+                        prob.append("c"+ccount+": "); ++ccount;
+                        Iterator<String> codes_it = ccodes.iterator();
+                        while (codes_it.hasNext()) {
+                            String code = codes_it.next();
+                            Course cc = Course.getCourseByCode(code);
+                            prob.append(cc.getCredits()+" x_"+cc.getId()+" ");
+                            if (codes_it.hasNext()) prob.append("+ ");
+                            else prob.append(">= "+cgc+"\n");
+                        }                    
+                    }
                 }
             }
         }
+        prob.append("\\ concentration "+concentration+
+                    " area constraints end\n");
         // 2.14 fourteenth, the capstone project group constraints
-        prob.append("\\ capstone project constraints\n");
-        gnamesit = CourseGroup.getCourseGroupNameIterator();
-        while (gnamesit.hasNext()) {
-            String gname = gnamesit.next();
-            CourseGroup cg = CourseGroup.getCourseGroupByName(gname);
-            if (cg.isCapstoneProjectGroup()) {
-                // first the total credits constraint for the capstone project
-                final int ncredits = cg.getMinNumCreditsReqd();
-                for (int s=1; s<=Smax; s++) {
-                    final int ks = Course.isSummerTerm(s) ? 3 : 1;
-                    if (s-ks<0) continue;
-                    prob.append("c").append(ccount).append(": ").
-                        append(ncredits).append(" x_");
-                    ++ccount;
-                    final Course c = Course.getCourseByCode(cg.getGroupCodes().
-                                                             iterator().next());
-                    final int cid = c.getId();
-                    prob.append(cid);
-                    prob.append("_").append(s).append(" - ");
-                    for (int t=0; t<=s-ks; t++) {
-                        for (int j=0; j<N; j++) {
-                            if (j==cid) continue;
-                            Course cj = Course.getCourseById(j);
-                            prob.append(cj.getCredits()).
-                                  append(" x_").append(j).append("_").append(t);
-                        }
-                        if (t<s-ks) prob.append(" - ");
-                        else prob.append(" <= 0\n");
-                    }
-                }
-                // finally, the min number of concentration area courses 
-                // constraint for the capstone project
-                final int ncourses = cg.getMinNumCoursesReqd();
-                Set<String> conc_courses = new HashSet<>();
-                Iterator<String> groups_it = 
-                        CourseGroup.getCourseGroupNameIterator();
-                while (groups_it.hasNext()) {
-                  String gs_name = groups_it.next();
-                  if (gs_name.startsWith(concentration)) {
-                      CourseGroup cg2 = 
-                              CourseGroup.getCourseGroupByName(gs_name);
-                      conc_courses.addAll(cg2.getGroupCodes());
-                  }
-                }
-                for (int s=1; s<=Smax; s++) {
-                    final int ks = Course.isSummerTerm(s) ? 3 : 1;
-                    if (s-ks<0) continue;
-                    prob.append("c").append(ccount).append(": ").
-                        append(ncourses).append(" x_");
-                    ++ccount;
-                    final Course c = Course.getCourseByCode(cg.getGroupCodes().
-                                                             iterator().next());
-                    final int cid = c.getId();
-                    prob.append(cid);
-                    prob.append("_").append(s).append(" - ");
-                    for (int t=0; t<=s-ks; t++) {
-                        Iterator<String> cs_it = 
-                                conc_courses.iterator();
-                        while(cs_it.hasNext()) {
-                            String cs = cs_it.next();
-                            Course cc = Course.getCourseByCode(cs);
-                            final int j = cc.getId();
-                            if (j==cid) continue;
-                            prob.append(" x_").append(j).append("_").append(t);
-                            if (cs_it.hasNext() || t<s-ks) prob.append(" - ");
+        //      notice that if they have a target they are treated afterwards
+        if (!group_names.contains("capstone")) {
+            prob.append("\\ capstone project constraints\n");
+            gnamesit = CourseGroup.getCourseGroupNameIterator();
+            while (gnamesit.hasNext()) {
+                String gname = gnamesit.next();
+                CourseGroup cg = CourseGroup.getCourseGroupByName(gname);
+                if (cg.getTargetCode()!=null) continue;
+                if (cg.isCapstoneProjectGroup()) {
+                    // first the total credits constraint for the capstone project
+                    final int ncredits = cg.getMinNumCreditsReqd();
+                    for (int s=1; s<=Smax; s++) {
+                        final int ks = Course.isSummerTerm(s) ? 3 : 1;
+                        if (s-ks<0) continue;
+                        prob.append("c").append(ccount).append(": ").
+                            append(ncredits).append(" x_");
+                        ++ccount;
+                        final Course c = Course.getCourseByCode(cg.getGroupCodes().
+                                                                 iterator().next());
+                        final int cid = c.getId();
+                        prob.append(cid);
+                        prob.append("_").append(s).append(" - ");
+                        for (int t=0; t<=s-ks; t++) {
+                            for (int j=0; j<N; j++) {
+                                if (j==cid) continue;
+                                Course cj = Course.getCourseById(j);
+                                prob.append(cj.getCredits()).
+                                      append(" x_").append(j).append("_").append(t);
+                            }
+                            if (t<s-ks) prob.append(" - ");
                             else prob.append(" <= 0\n");
+                        }
+                    }
+                    // finally, the min number of concentration area courses 
+                    // constraint for the capstone project
+                    final int ncourses = cg.getMinNumCoursesReqd();
+                    Set<String> conc_courses = new HashSet<>();
+                    Iterator<String> groups_it = 
+                            CourseGroup.getCourseGroupNameIterator();
+                    while (groups_it.hasNext()) {
+                      String gs_name = groups_it.next();
+                      if (gs_name.startsWith(concentration)) {
+                          CourseGroup cg2 = 
+                                  CourseGroup.getCourseGroupByName(gs_name);
+                          conc_courses.addAll(cg2.getGroupCodes());
+                      }
+                    }
+                    for (int s=1; s<=Smax; s++) {
+                        final int ks = Course.isSummerTerm(s) ? 3 : 1;
+                        if (s-ks<0) continue;
+                        prob.append("c").append(ccount).append(": ").
+                            append(ncourses).append(" x_");
+                        ++ccount;
+                        final Course c = Course.getCourseByCode(cg.getGroupCodes().
+                                                                 iterator().next());
+                        final int cid = c.getId();
+                        prob.append(cid);
+                        prob.append("_").append(s).append(" - ");
+                        for (int t=0; t<=s-ks; t++) {
+                            Iterator<String> cs_it = 
+                                    conc_courses.iterator();
+                            while(cs_it.hasNext()) {
+                                String cs = cs_it.next();
+                                Course cc = Course.getCourseByCode(cs);
+                                final int j = cc.getId();
+                                if (j==cid) continue;
+                                prob.append(" x_").append(j).append("_").append(t);
+                                if (cs_it.hasNext() || t<s-ks) prob.append(" - ");
+                                else prob.append(" <= 0\n");
+                            }
                         }
                     }
                 }
@@ -1139,95 +1398,201 @@ public class MIPHandler {
         // takes ci in term t, they must take course cj by t + cn
         // In case the student has already taken course ci (in term t=0),
         // the constraint becomes simply inactive.
+        // We don't enforce soft-order constraints when either of the courses 
+        // involved are in the desired list
         prob.append("\\ soft-order precedence constraints\n");
         gnamesit = CourseGroup.getCourseGroupNameIterator();
         while (gnamesit.hasNext()) {
             String gname = gnamesit.next();
-            CourseGroup cg = CourseGroup.getCourseGroupByName(gname);
-            if (cg.isSoftOrderPrecedenceConstraint()) {
-                prob.append("\\ soft-order constraint: "+gname+"\n");
-                List<String> codes = cg.getGroupCodes();
-                final int cn = cg.getMinNumCoursesReqd();
-                Course ci = Course.getCourseByCode(codes.get(0));
-                Course cj = Course.getCourseByCode(codes.get(1));
-                for (int s=1; s<=Smax; s++) {
-                    int cn2 = cn;
-                    if (cn==0) cn2 = s;  // if cn is zero, there is no limit
-                                         // in the time-distance between the 
-                                         // two courses
-                    prob.append("c"+ccount+": "); ++ccount;
-                    prob.append("x_"+cj.getId()+"_"+s+" ");
-                    final int s0 = Math.max(0, s-cn2);
-                    for (int t=s0; t<=s-1; t++) {
-                        prob.append(" - x_"+ci.getId()+"_"+t);
+            if (!anyOfStartsWith(group_names, gname)) {
+                CourseGroup cg = CourseGroup.getCourseGroupByName(gname);
+                if (cg.isSoftOrderPrecedenceConstraint()) {
+                    if (cg.getTargetCode()!=null) {
+                        throw new Error("soft-order constraint "+gname+
+                                        " has target "+cg.getTargetCode());
                     }
-                    prob.append(" + x_"+ci.getId());
-                    prob.append(" <= 1\n");
+                    prob.append("\\ soft-order constraint: "+gname+"\n");
+                    List<String> codes = cg.getGroupCodes();
+                    final int cn = cg.getMinNumCoursesReqd();
+                    Course ci = Course.getCourseByCode(codes.get(0));
+                    Course cj = Course.getCourseByCode(codes.get(1));
+                    boolean cont = true;
+                    DesiredCourses dc = getDesiredCourses();
+                    if (dc.contains(ci.getCode())) {
+                        Set<Integer> preferred_terms = 
+                                dc.getPreferredTerms4Course(ci.getCode(),0,Smax);
+                        if (preferred_terms.size() == 1) cont = false;
+                    }
+                    if (dc.contains(cj.getCode())) {
+                        Set<Integer> preferred_terms = 
+                                dc.getPreferredTerms4Course(cj.getCode(),0,Smax);
+                        if (preferred_terms.size() == 1) cont = false;
+                    }
+                    if (!cont) {  // soft-order constraint must become inactive
+                        prob.append("\\ soft-order constraint deactivated\n");
+                        continue;
+                    }
+                    for (int s=1; s<=Smax; s++) {
+                        int cn2 = cn;
+                        if (cn==0) cn2 = s;  // if cn is zero, there is no limit
+                                             // in the time-distance between the 
+                                             // two courses
+                        prob.append("c"+ccount+": "); ++ccount;
+                        prob.append("x_"+cj.getId()+"_"+s+" ");
+                        final int s0 = Math.max(0, s-cn2);
+                        for (int t=s0; t<=s-1; t++) {
+                            prob.append(" - x_"+ci.getId()+"_"+t);
+                        }
+                        prob.append(" + x_"+ci.getId());
+                        prob.append(" <= 1\n");
+                    }
                 }
             }
         }
+        prob.append("\\ soft-order precedence constraints end\n");
         // 2.16 sixteenth, the OU constraints that ask for an upper limit of 
         // OU courses taken every academic year (starting on a Fall term.)
-        prob.append("\\ OU max #courses per academic year constraint\n");
-        gnamesit = CourseGroup.getCourseGroupNameIterator();
-        while (gnamesit.hasNext()) {
-            String gname = gnamesit.next();
-            CourseGroup cg = CourseGroup.getCourseGroupByName(gname);
-            if (cg.isOUConstraint()) {
-                List<String> codes = cg.getGroupCodes();
-                int cnmax = cg.getMinNumCoursesReqd();  // this is a max value
-                for (int s=1; s<=Smax; s++) {
-                    if (Course.isFallTerm(s)) {
-                        // for the min(s+4,Smax) terms, OU courses must be 
-                        // no more than cnmax
-                        int s_up_to = Math.min(s+4, Smax);
-                        prob.append("c"+ccount+": "); ++ccount;
-                        for (int s2 = s; s2<=s_up_to; s2++) {
-                            for (int j=0; j<codes.size(); j++) {
-                                Course c = Course.getCourseByCode(codes.get(j));
-                                int cid = c.getId();
-                                prob.append("x_"+cid+"_"+s2+" ");
-                                if (j<codes.size()-1 || s2<s_up_to)
-                                    prob.append(" + ");
-                            }
-                        }
-                        prob.append(" <= "+cnmax+"\n");
+        if (!group_names.contains("OU")) {
+            prob.append("\\ OU max #courses per academic year constraint\n");
+            gnamesit = CourseGroup.getCourseGroupNameIterator();
+            while (gnamesit.hasNext()) {
+                String gname = gnamesit.next();
+                CourseGroup cg = CourseGroup.getCourseGroupByName(gname);
+                if (cg.isOUConstraint()) {
+                    if (cg.getTargetCode()!=null) {
+                        throw new Error("OU constraint group "+gname+
+                                        " has target variable "+
+                                        cg.getTargetCode());
                     }
-                    else if (s==1) {  // constraints for current academic year
-                        int cnmax2 = cnmax - num_OU_cur_academic_year;
-                        int s_next_ST = Course.nextFallTerm(s)-1;
-                        prob.append("c"+ccount+": "); ++ccount;
-                        for (int s2 = s; s2<=s_next_ST; s2++) {
-                            for (int j=0; j<codes.size(); j++) {
-                                Course c = Course.getCourseByCode(codes.get(j));
-                                int cid = c.getId();
-                                prob.append("x_"+cid+"_"+s2+" ");
-                                if (j<codes.size()-1 || s2<s_next_ST)
-                                    prob.append(" + ");
+                    List<String> codes = cg.getGroupCodes();
+                    int cnmax = cg.getMinNumCoursesReqd();  // this is max value
+                    for (int s=1; s<=Smax; s++) {
+                        if (Course.isFallTerm(s)) {
+                            // for the min(s+4,Smax) terms, OU courses must be 
+                            // no more than cnmax
+                            int s_up_to = Math.min(s+4, Smax);
+                            prob.append("c"+ccount+": "); ++ccount;
+                            for (int s2 = s; s2<=s_up_to; s2++) {
+                                for (int j=0; j<codes.size(); j++) {
+                                    Course c = 
+                                        Course.getCourseByCode(codes.get(j));
+                                    int cid = c.getId();
+                                    prob.append("x_"+cid+"_"+s2+" ");
+                                    if (j<codes.size()-1 || s2<s_up_to)
+                                        prob.append(" + ");
+                                }
                             }
+                            prob.append(" <= "+cnmax+"\n");
                         }
-                        prob.append(" <= "+cnmax2+"\n");                        
+                        else if (s==1) {  // constraints for cur. academic year
+                            int cnmax2 = cnmax - num_OU_cur_academic_year;
+                            int s_next_ST = Course.nextFallTerm(s)-1;
+                            prob.append("c"+ccount+": "); ++ccount;
+                            for (int s2 = s; s2<=s_next_ST; s2++) {
+                                for (int j=0; j<codes.size(); j++) {
+                                    Course c = 
+                                        Course.getCourseByCode(codes.get(j));
+                                    int cid = c.getId();
+                                    prob.append("x_"+cid+"_"+s2+" ");
+                                    if (j<codes.size()-1 || s2<s_next_ST)
+                                        prob.append(" + ");
+                                }
+                            }
+                            prob.append(" <= "+cnmax2+"\n");                        
+                        }
                     }
                 }
-            }
-        }        
-        // 2.17 seventeenth, the honor-student constraints -only for non-honor 
-        //      students
+            }        
+        }
+        // 2.17a seventeenth, the honor-student constraints -only for non-honor 
+        //       students
         if (!isHonorStudent) {
             CourseGroup honor_cg = 
                     CourseGroup.getCourseGroupByName("HonorGroup");
             if (honor_cg!=null) {
-                prob.append("\\ Honor Course constraints\n");
-                Iterator<String> cs_it = honor_cg.getGroupCodes().iterator();
-                while (cs_it.hasNext()) {
-                    String cs = cs_it.next();
-                    if (_passed.contains(cs)) continue;  // somehow, course has
-                                                         // been passed already
-                    Course ci = Course.getCourseByCode(cs);
-                    prob.append("x_"+ci.getId()+" = 0\n");
+                if (!group_names.contains("HonorGroup")) {
+                    prob.append("\\ Honor Course constraints for "+
+                                "NON-Honor students\n");
+                    Iterator<String> cs_it=honor_cg.getGroupCodes().iterator();
+                    while (cs_it.hasNext()) {
+                        String cs = cs_it.next();
+                        if (_passed.contains(cs)) continue;  // somehow, course
+                                                             // passed already
+                        Course ci = Course.getCourseByCode(cs);
+                        prob.append("c"+ccount+": "); ++ccount;
+                        prob.append("x_"+ci.getId()+" = 0\n");
+                    }
+                    prob.append("\\ Honor Course constraints for "+
+                                "Non-Honor students end\n");
                 }
             }
         }
+        // 2.17b group constraints with target variables
+        if (!group_names.contains("target_code_constraints")) {
+            prob.append("\\ constraints with target class code\n");
+            Iterator<String> cgnames = CourseGroup.getCourseGroupNameIterator();
+            while (cgnames.hasNext()) {
+                String cgname = cgnames.next();
+                CourseGroup cg = CourseGroup.getCourseGroupByName(cgname);
+                if (cg.getTargetCode()==null) continue;
+                prob.append("\\ target constraint group "+cgname+"\n");
+                String targetCode = cg.getTargetCode();
+                if (_passed.contains(targetCode)) 
+                    continue;  // somehow target is passed already!                         
+                Course target = Course.getCourseByCode(targetCode);
+                List<String> codes = cg.getGroupCodes();
+                List<Course> classes = new ArrayList<>();
+                for (String code : codes) {
+                    Course c = Course.getCourseByCode(code);
+                    classes.add(c);
+                }
+                // first express the num-courses constraints
+                final int minNumCourses = cg.getMinNumCoursesReqd();
+                for (int s=1; s<=Smax; s++) {
+                    prob.append("c"+ccount+": "); ++ccount;
+                    int ks = Course.isSummerTerm(s) ? 3 : 1;
+                    for (int t=0; t<=s-ks; t++) {
+                        for (int i=0; i<classes.size(); i++) {
+                            int ci = classes.get(i).getId();
+                            prob.append("x_"+ci+"_"+t+" ");
+                            if (i<classes.size()-1 || t<s-ks) 
+                                prob.append(" + ");
+                        }
+                    }
+                    prob.append(" - "+minNumCourses+" x_"+target.getId()+"_"+s);
+                    prob.append(" >= 0\n");
+                }
+                // then express the (possible) num-credits constraints
+                final int minNumCredits = cg.getMinNumCreditsReqd();
+                for (int s=1; s<=Smax; s++) {
+                    prob.append("c"+ccount+": "); ++ccount;
+                    int ks = Course.isSummerTerm(s) ? 3 : 1;
+                    for (int t=0; t<=s-ks; t++) {
+                        for (int i=0; i<classes.size(); i++) {
+                            final Course ci = classes.get(i);
+                            final int cid = ci.getId();
+                            final int cri = ci.getCredits();
+                            prob.append(cri + " x_"+cid+"_"+t+" ");
+                            if (i<classes.size()-1 || t<s-ks) 
+                                prob.append(" + ");
+                        }
+                    }
+                    prob.append(" - "+minNumCredits+" x_"+target.getId()+"_"+s);
+                    prob.append(" >= 0\n");
+                }
+            }
+            prob.append("\\ constraints with target class code end\n");
+        }
+        // 2.17c non-negativity constraints for all soft-constraints slack vars
+        prob.append("\\ Slack variables for soft-constraints non-negativity\n");
+        Iterator<String> cgnames = CourseGroup.getCourseGroupNameIterator();
+        while (cgnames.hasNext()) {
+            String cgname = cgnames.next();
+            CourseGroup cg = CourseGroup.getCourseGroupByName(cgname);
+            if (cg.isSoftConstraint()) {
+                prob.append(cg.getSlackVarName() + " >= 0\n");
+            }
+        }        
         // 2.18 eightteenth, the variable constraints
         prob.append("Binary\n");
         for (int i=0; i<N; i++) {
@@ -1241,7 +1606,8 @@ public class MIPHandler {
             prob.append(v+" ");
         }
         // variable "Dx" and "G" can be continuous, so it's not declared at all
-        // 2.19 finally, the END delimiter of all LP files
+        // same for all slack variables associated with "soft" constraints
+        // 2.20 finally, the END delimiter of all LP files
         prob.append("\nEnd");
         
         // 3. write the problem as an LP format file called 
@@ -1252,7 +1618,11 @@ public class MIPHandler {
         //    application (MainGUI) windows can be open at the same time.
         final long now = MainGUI._startTime;
         final String stname = MainGUI._studentName;
-        String schedfile = "schedule_"+stname+"_"+now+".lp";
+        final String constr_groups_2_ignore2 = 
+                constr_groups_2_ignore.replaceAll(" ", "_");
+        String schedfile = "schedule_"+stname+
+                           "_NO_"+constr_groups_2_ignore2+"_"+
+                           now+".lp";
         try (PrintWriter pw = new PrintWriter(new FileWriter(schedfile))) {
             pw.print(prob);
             pw.flush();
@@ -1276,8 +1646,29 @@ public class MIPHandler {
      * @return String the schedule to write in the outputs area
      * @throws GRBException if GUROBI fails to solve the problem
      * @throws IOException if some I/O error occurs
-     */
+     */    
     public String optimizeSchedule(String schedfile) 
+        throws GRBException, IOException {
+        if (_params.getUseGUROBI()) 
+            return optimizeScheduleWithGUROBI(schedfile);
+        else 
+            return optimizeScheduleWithSCIP(schedfile);
+    }
+    
+    
+    /**
+     * solves the model in file "schedule_&lt;studentname&gt;_&lt;ts&gt;.lp" and 
+     * returns the results in a String to be displayed in the output area, using
+     * the GUROBI commercial state-of-the-art solver.
+     * Variable values get written in file 
+     * "schedule_&lt;studentname&gt;_&lt;ts&gt;.lp.result_vars.out".
+     * @param schedfile String the name of the file containing the schedule for
+     * this problem
+     * @return String the schedule to write in the outputs area
+     * @throws GRBException if GUROBI fails to solve the problem
+     * @throws IOException if some I/O error occurs
+     */
+    public String optimizeScheduleWithGUROBI(String schedfile) 
         throws GRBException, IOException {
         _cid2tnoMap.clear();
         long start = System.currentTimeMillis();
@@ -1286,7 +1677,7 @@ public class MIPHandler {
         model.optimize();
         int optimstatus = model.get(GRB.IntAttr.Status);
         if (optimstatus!=GRB.Status.OPTIMAL) {
-            return "Model infeasible (or could not be solved)";
+            return "FAILURE: Model infeasible (or could not be solved)";
         }
         long dur = System.currentTimeMillis()-start;
         String dstr = "Schedule computed in "+dur+" msecs.\n";
@@ -1360,8 +1751,113 @@ public class MIPHandler {
         sb.append("End\n");
         return sb.toString();
     }
-    
-    
+
+
+    /**
+     * solves the model in file "schedule_&lt;studentname&gt;_&lt;ts&gt;.lp" and 
+     * returns the results in a String to be displayed in the output area, using
+     * the Open-Source state-of-the-art solver SCIP.
+     * Variable values get written in file 
+     * "schedule_&lt;studentname&gt;_&lt;ts&gt;.lp.result_vars.out".
+     * @param schedfile String the name of the file containing the schedule for
+     * this problem
+     * @return String the schedule to write in the outputs area
+     * @throws IOException if some I/O error occurs
+     */
+    public String optimizeScheduleWithSCIP(String schedfile) 
+        throws IOException {
+        _cid2tnoMap.clear();
+        long start = System.currentTimeMillis();
+        final String cmdLine = _params.getSCIPPath() + " -f " + schedfile;
+                               // + " -s set.scip";
+        HashMap<String, Integer> x_vars = new HashMap<>();
+        int optimstatus = exec(cmdLine, x_vars);
+        if (optimstatus!=0) {
+            return "FAILURE: SCIP process failed, problem likely infeasible...";
+        }
+        long dur = System.currentTimeMillis()-start;
+        String results_file = schedfile+".result_vars.out";
+        String dstr = "Schedule computed in "+dur+" msecs.\n";
+        int num_credits_taken = 0;
+        int num_credits_to_take = 0;
+        int total_credits = 0;
+        HashMap<Integer, List<String>> sem_courses_map = new HashMap<>();
+        StringBuffer sb = new StringBuffer();
+        sb.append(dstr);
+        PrintWriter pwr = 
+                new PrintWriter(new FileWriter(results_file));
+        // get the names of all variables of the form "x_i" that are set to 1
+        Set<Integer> all_sol_varids = new HashSet<>();
+        for (String vname : x_vars.keySet()) {
+            int vval = x_vars.get(vname);
+            if (vval==1) {
+                String[] xcomps = vname.split("_");
+                if (xcomps.length==2 && vname.startsWith("x")) 
+                    all_sol_varids.add(Integer.parseInt(xcomps[1]));
+            }
+        }
+        int num_courses_2_take = 0;
+        int num_courses_taken = 0;
+        for (String vname : x_vars.keySet()) {
+            int vval = x_vars.get(vname);
+            pwr.println(vname+"="+vval);
+            if (vval==1) {
+                // parse name
+                String[] xcomps = vname.split("_");
+                if (xcomps.length<3) 
+                    continue;  // it's not the x_i_s vars that we want 
+                int vid = Integer.parseInt(xcomps[1].trim());
+                int termno = Integer.parseInt(xcomps[2].trim());
+                _cid2tnoMap.put(vid, termno);  // add variable to solution map
+                Course cv = Course.getCourseById(vid);
+                if (termno>=1) {
+                    num_credits_to_take += cv.getCredits();
+                    ++num_courses_2_take;
+                }
+                else {
+                    num_credits_taken += cv.getCredits();
+                    ++num_courses_taken;
+                }
+                total_credits += cv.getCredits();
+                String course_descr = cv.getScheduleDisplayName();
+                if (course_descr==null || course_descr.length()<=1 ||
+                    _desired.contains(cv.getCode()) || 
+                    cv.isRequired4Desired(_desired, all_sol_varids))  
+                    // if user selected course or if course is needed for such
+                    // course, show it with full name in schedule
+                    course_descr = cv.toString();
+                // String term_desc = Course.getTermNameByTermNo(termno);
+                //sb.append(term_desc).append(course_descr).append("\n");
+                List<String> sem_courses = sem_courses_map.get(termno);
+                if (sem_courses==null) {
+                    sem_courses = new ArrayList<>();
+                    sem_courses_map.put(termno, sem_courses);
+                }
+                sem_courses.add(course_descr);
+            }
+        }
+        pwr.flush();
+        pwr.close();
+        final int Smax = _params.getSmax();
+        sb.append("\n----- #Courses Taken So Far\t: "+num_courses_taken);
+        sb.append("\n----- #Courses To Take Yet\t: "+num_courses_2_take);
+        sb.append("\n----- Credits Taken So Far\t: "+num_credits_taken);
+        sb.append("\n----- Credits To Take Yet\t: "+num_credits_to_take);
+        sb.append("\n----- TOTAL CREDITS OVERALL\t: "+total_credits+"\n");
+        for (int s=1; s<=Smax; s++) {
+            List<String> crs_lst = sem_courses_map.get(s);
+            if (crs_lst!=null) {
+                String sem_descr="     --- "+Course.getTermNameByTermNo(s)+
+                                 " ---\n";
+                sb.append(sem_descr);
+                for (String c : crs_lst) sb.append(c+"\n");
+            }
+        }
+        sb.append("End\n");
+        return sb.toString();
+    }
+
+        
     /**
      * return a copy of the last computed solution. The solution is returned as
      * a map from course-id (not course-code), to the term-number during which
@@ -1374,4 +1870,123 @@ public class MIPHandler {
     public HashMap<Integer, Integer> getLastOptimalSolution() {
         return new HashMap<>(_cid2tnoMap);
     }
+    
+    
+    /**
+     * runs the SCIP solver to optimize the model in a separate process.
+     * @param cmdLine String e.g. "/path/to/scip -f model.lp -set scip.set"
+     * @param solution HashMap&lt;String, Integer&gt;
+     * @return int zero if everything went fine
+     * @throws IOException 
+     */
+    private int exec(String cmdLine, HashMap<String, Integer> solution) 
+        throws IOException {
+        // zero-out solution
+        solution.clear();
+        int retCode = 1;  // Process return code
+        BufferedReader in = null;
+        Runtime rt = null;
+        // String cmdLine = null;
+        // Get a Runtime instance
+        rt = Runtime.getRuntime();
+        // Get the child process
+        Process child = rt.exec(cmdLine);
+        // Get input streams for the child process
+        in = new BufferedReader(new InputStreamReader(child.getInputStream()));
+        // Loop until the child process is finished.
+        boolean finished = false;
+        String inString;
+        do {
+            try {
+                // Read any data that the child process has written to stdout.
+                // This is necessary to prevent the child process from blocking.
+                while (in.ready()) {
+                    inString = in.readLine();
+                    System.out.println(inString);
+                    if (inString.contains("(problem infeasible)")) {
+                        // SCIP output denoting problem infeasibility
+                        return -1;
+                    }
+                    // check to see if line is part of the solution
+                    if (inString.startsWith("x_")) {
+                        StringTokenizer st = new StringTokenizer(inString);
+                        String varname = st.nextToken();
+                        String varvalue = st.nextToken();
+                        //int val = Integer.parseInt(varvalue);
+                        // itc20241112: the above can throw when SCIP produces
+                        // a value such as 0.99999...
+                        double dval = Double.parseDouble(varvalue);
+                        int val = (int) Math.round(dval);
+                        solution.put(varname, val);
+                    }
+                }
+                // Attempt to get the exit code
+                retCode = child.exitValue();
+                finished = true;
+
+                // If process is not finished, an attempt to get the exit code
+                // will throw IllegalThreadStateException. Catch this and sleep 
+                // for 250 msec before trying again.
+            } catch (IllegalThreadStateException e) {
+                try {
+                    java.lang.Thread.currentThread().sleep(250);
+                } catch (InterruptedException e1) {}
+            }
+        } while (!finished);
+        return retCode;
+    }
+    
+    
+    private static boolean anyOfStartsWith(Set<String> names, String name) {
+        for (String s : names) {
+            if (s.startsWith(name)) return true;
+        }
+        return false;
+    }
+    
+    
+    /**
+     * helper static method that adds to the objective function formulation the 
+     * slack variables specified by the "soft-constraints". Only called by the 
+     * method <CODE>createMIPFile()</CODE> and obviously the order when the 
+     * method is called in that method is important.
+     * @param prob StringBuffer
+     */
+    private static void addSlackVarsWithCoeffs(StringBuffer prob) {
+        Iterator<String> gnames = CourseGroup.getCourseGroupNameIterator();
+        while (gnames.hasNext()) {
+            String gname = gnames.next();
+            CourseGroup cg = CourseGroup.getCourseGroupByName(gname);
+            if (cg.isSoftConstraint()) {
+                prob.append(CourseGroup._objSlackCoeff+" ");
+                prob.append(cg.getSlackVarName()+" + ");
+            }
+        }
+    }
+    
+    
+    /**
+     * helper method that adds to the objective function formulation the 
+     * time-slotted variables for the courses that have been specified in the
+     * parameters file as "LastTermCodes" (these are course codes separated by a
+     * semicolumn). The coefficients of the x_{ij} variables are such so that
+     * the courses are preferred to be taken towards the end of the plan. Only 
+     * called by the method <CODE>createMIPFile()</CODE> and obviously the order 
+     * when the method is called in that method is important.
+     * @param prob StringBuffer 
+     */
+    private void addSeniorTermsVarsWithCoeffs(StringBuffer prob) {
+        final Set<String> codes = _params.getCourses2Plan4LastTerms();
+        final int Smax = _params.getSmax();
+        final double coeff = MIPHandler._LAST_TERMS_COEFF_MULT;
+        for (String code : codes) {
+            Course c = Course.getCourseByCode(code);
+            String xc = " x_" + c.getId() + "_";
+            for (int i=Smax; i>=1; i--) {
+                double vali = coeff * (Smax-i+1);
+                prob.append(vali + xc + i + " + ");
+            }
+        }
+    }
+
 }

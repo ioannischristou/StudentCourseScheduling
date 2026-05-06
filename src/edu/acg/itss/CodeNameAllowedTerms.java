@@ -27,7 +27,7 @@ public class CodeNameAllowedTerms {
     
     /**
      * checks if the course described by given code is offered in at least one
-     * of the terms described in allowedTerms (preferred terms) string. This is
+     * of the terms described in the preferredTerms string parameter. This is
      * a helper method so that we can offer the following functionality: if the
      * student edits their proposed schedule by asking for a course to be taken
      * during a time that the course is not offered, then in the "desired 
@@ -36,44 +36,110 @@ public class CodeNameAllowedTerms {
      * strong indication for the student that the times they chose are not 
      * feasible.
      * @param code String such as "ITC3160"
-     * @param allowedTerms String such as "allterms", "allotherterms" or 
-     * "FA2022 SP2023" or "-" (unwanted, overrides all other options)
+     * @param preferredTerms String such as "allterms", "everyfall",
+     * "allotherterms" or "FA2022 SP2023" or "-" (unwanted, overrides all other 
+     * options)
      * @param currentTermNo int the termno when the course with given code is
      * scheduled in the current solution
      * @param Smax int the maximum allowed term remaining to complete studies
      * @return boolean true iff the allowedTerms contains at least one term 
      * when the course is offered
      * @throws IllegalArgumentException if code does not exist or if 
-     * allowedTerms cannot be parsed.
+     * preferredTerms cannot be parsed.
      */
     public static boolean prefferedTermsAllowed(String code, 
-                                                String allowedTerms,
+                                                String preferredTerms,
                                                 int currentTermNo,
                                                 int Smax) {
+        System.err.println("preferredTermsAllowed("+code+"): called w/ Smax="+Smax);  // debug
         Course c = Course.getCourseByCode(code);
         if (c==null) throw new IllegalArgumentException("invalid course code");
-        if (allowedTerms==null) 
-            throw new IllegalArgumentException("null allowedTerms");
-        String[] terms = allowedTerms.split(" ");
+        if (preferredTerms==null) 
+            throw new IllegalArgumentException("null preferredTerms");
+        String[] terms = preferredTerms.split(" ");
         List<Integer> off_terms = c.getTermsOffered(Smax);
+        // debug from here
+        System.err.print("CNAT.preferredTermsAllowed("+code+","+preferredTerms+
+                         "...): offered in terms: ");
+        for (int t : off_terms) {
+            System.err.print(t+" ");
+        }
+        // debug up to here
         boolean ret = false;
         for (String term : terms) {
-            if ("-".equals(term.trim())) return false;
-            if ("allterms".equals(term.trim())) {
-                ret = true;
-                continue;
+            term = term.trim();
+            if ("-".equals(term)) {
+                System.err.println("due to - return false");  // debug
+                return false;
             }
-            if ("allotherterms".equals(term.trim())) {
+            if ("allterms".equals(term)) {
+                System.err.println("due to allterms return true");  // debug
+                return true;
+            }
+            if ("allotherterms".equals(term)) {
                 for (int s=1; s<=Smax; s++) {
-                    if (s!=currentTermNo && off_terms.contains(s)) ret = true;
+                    if (s!=currentTermNo && off_terms.contains(s)) {
+                        System.err.println("due to allotherterms return true");  // debug
+                        return true;
+                    }
                 }
                 continue;
             }
+            if ("everyfall".equals(term)) {
+                int s_start = Course.nextFallTerm(0);
+                for (int s=s_start; s<=Smax; s++) {
+                    if (off_terms.contains(s)) {
+                        System.err.println("due to everyfall return true");  // debug
+                        return true;                        
+                    }
+                }
+            }
+            if ("everyspring".equals(term)) {
+                int s_start = Course.nextSpringTerm(0);
+                for (int s=s_start; s<=Smax; s++) {
+                    if (off_terms.contains(s)) {
+                        System.err.println("due to everyspring return true");  // debug
+                        return true;                        
+                    }
+                }
+            }
+            if ("everysummer1".equals(term)) {
+                int s_start = Course.nextSummer1Term(0);
+                for (int s=s_start; s<=Smax; s++) {
+                    if (off_terms.contains(s)) {
+                        System.err.println("due to everysummer1 return true");  // debug
+                        return true;                        
+                    }
+                }
+            }
+            if ("everysummer2".equals(term)) {
+                int s_start = Course.nextSummer2Term(0);
+                for (int s=s_start; s<=Smax; s++) {
+                    if (off_terms.contains(s)) {
+                        System.err.println("due to everysummer2 return true");  // debug
+                        return true;                        
+                    }
+                }
+            }
+            if ("everysummerterm".equals(term)) {
+                int s_start = Course.nextSummerTerm(0);
+                for (int s=s_start; s<=Smax; s++) {
+                    if (off_terms.contains(s)) {
+                        System.err.println("due to everysummerterm return true");  // debug
+                        return true;                        
+                    }
+                }
+            }
             if (term.length()>1) {
                 int termno = Course.getTermNo(term);
-                if (off_terms.contains(termno)) ret = true;
+                System.err.print("termno = "+termno+" ");
+                if (off_terms.contains(termno)) {
+                    System.err.println(" due to termno, return true");  // debug
+                    return true;
+                }
             }
         }
+        System.err.println("nothing worked returns false");  // debug
         return ret;
     }
     

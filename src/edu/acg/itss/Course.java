@@ -1,7 +1,12 @@
 package edu.acg.itss;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileReader;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -19,6 +24,18 @@ import javax.swing.JOptionPane;
  * The <CODE>CourseEditor</CODE> class provides the GUI for editing (adding,
  * modifying and/or deleting) courses in the appropriate "cls.csv" file where 
  * courses are stored.
+ * <p>Notes:
+ * <ul>
+ * <li>20260323: added the keywords "everysummerX" to allow courses offered 
+ * during "Summer1" and "Summer2" terms.
+ * <li>20260324: when deleting a course that also appears in at least one
+ * group constraint, the cls.csv and all relevant .grp files are immediately
+ * updated and the program closes, in the same way that when a course that 
+ * appears in at least one group constraint changes code, the relevant files
+ * are immediately modified and the program closes.
+ * <li>20260324: the terms offered are no longer changing from what is written
+ * in the "cls.csv" file unless the user specifically changes this data.
+ * </ul>
  * @author itc
  */
 public class Course implements Comparable {
@@ -215,8 +232,9 @@ public class Course implements Comparable {
      * </PRE>
      * Alternatively, the terms offered can be simply the string "alltimes" in
      * which case the course is available every term from s=1...Smax, or the 
-     * string "everyfall" or "everyspring" or "everysummerterm", with the 
-     * obvious meaning of the words. It can also be "next2terms" or "next4terms"
+     * string "everyfall" or "everyspring" or "everysummerterm", "everysummer1",
+     * "everysummer2" with the obvious meaning of the words. It can also be 
+     * "next2terms" or "next4terms".
      * Finally, if the course is not offered at all, the character "-" must be 
      * provided in that space. Otherwise, given the current term (which is 
      * computed from the current date-time), the number of each term is derived 
@@ -350,7 +368,12 @@ public class Course implements Comparable {
     
     /**
      * package-access method allows to modify a Course object, which is only
-     * required by the <CODE>CourseEditor</CODE>.
+     * required by the <CODE>CourseEditor</CODE>. When the code for the course
+     * itself changes (e.g. from "ITC4140" to "ITC4040"), the old entry in the
+     * map holding Course objects changes, all files in the root directory for
+     * this program with extension ".grp" that contain the old course code are 
+     * over-written to indicate the change of the course code, and the program
+     * exits, because it is necessary to re-load all data from the new files.
      * @param id String
      * @param code String
      * @param name String
@@ -383,22 +406,60 @@ public class Course implements Comparable {
                                   difficulty_level,
                                   Smax);
             _allCoursesMap.put(code, c);
+            // itc20241112:
+            // get Course for id, and if the course exists and the code is 
+            // different, then do:
+            // 1. delete old course from map
+            // 2. add new course on map
+            // 3. apply code-name change to all files w/ extension .grp and .csv
+            // 4. exit program as data must be reloaded from the new files.
+            Course old_c = Course.getCourseById(Integer.parseInt(id));
             _id2CrsMap.put(c._id, c);
+            if (old_c != null) {
+                String oldcode = old_c.getCode();
+                if (!oldcode.equals(code)) {
+                    _allCoursesMap.remove(oldcode);
+                    System.err.println("Modifying all csv and grp files to "+
+                                       "reflect new course code");
+                    boolean normal_load = false;
+                    CourseEditor ceditor = new CourseEditor(normal_load);
+                    ceditor.saveCoursesToDisk(oldcode, code);
+                    // change oldcode to code for every appearance in the .grp
+                    // files in _dir2Files
+                    String dir2Files = CourseEditor.getDir2Files();
+                    File cur_dir = new File(dir2Files);
+                    File[] cur_files = cur_dir.listFiles();        
+                    for (File f : cur_files) {
+                        if (f.isFile() && f.getName().endsWith("grp")) {
+                          Course.replaceStringInFile(f.getAbsolutePath(), 
+                                                     oldcode, 
+                                                     code);
+                        }   
+                    }
+                    int ans = 
+                        JOptionPane.showConfirmDialog(null, "Needs restart; " +
+                                      "please close all SCORER programs and " +
+                                      "restart them again.");
+                    System.exit(-1);  // return -1 to indicate to MainGUI to 
+                                      // close as well!
+                }
+            }
             return c;
         }
         catch (Exception e) {
+            e.printStackTrace();
             JOptionPane.showConfirmDialog(null, "at least one argument wrong");
             return null;
         }
-    }
+    }    
     
     
-    /**
+    /*
      * deletes the course identified by the number represented by the string
      * idstr. All courses with higher ids have their id decremented by 1.
      * @param idstr String such as "5"
      * @param Smax int the maximum number of terms a schedule can be created for
-     */
+     *
     static void deleteCourse(String idstr, int Smax) {
         int id = Integer.parseInt(idstr);
         Course c = Course.getCourseById(id);
@@ -429,23 +490,54 @@ public class Course implements Comparable {
             for (String s : ci._coreqs) {
                 coreqs += s +" ";
             }
-            String termsoffered = "";
-            for (int to : ci._termsOffered) {
-                termsoffered += Course.getTermNameByTermNo(to) + " ";
-            }
+            //String termsoffered = "";
+            //for (int to : ci._termsOffered) {
+            //    termsoffered += Course.getTermNameByTermNo(to) + " ";
+            //}
             Course ci_new = 
                     Course.modifyCourse(Integer.toString(i-1), 
                                         ci._code, ci._name,
                                         synonyms,
                                         Integer.toString(ci._credits),
                                         prereqs, coreqs,
-                                        termsoffered,
+                                        ci._toff,  // termsoffered,
                                         ci._scheduleDisplayName,
                                         Integer.toString(ci._difficultyLevel),
                                         Smax);          
             // finally, update _curId
             _curId = Course.getNumCourses();
         }
+    }
+     */
+
+
+    /**
+     * deletes the course identified by the number represented by the string
+     * idstr. All courses with higher ids have their id decremented by 1.
+     * @param idstr String such as "5"
+     * @param Smax int the maximum number of terms a schedule can be created for
+     */
+    static void deleteCourse(String idstr, int Smax) {
+        int id = Integer.parseInt(idstr);
+        Course c = Course.getCourseById(id);
+        System.err.println("deleting course "+c.getFullDetailsString(Smax));  // debug
+        _allCoursesMap.remove(c._code);
+        _id2CrsMap.remove(id);
+        // decrement the ids of all courses above it by 1
+        final int last_id = getLastId();
+        for (int i=id+1;i<=last_id; i++) {
+            Course ci = Course.getCourseById(i);
+            _id2CrsMap.remove(i);
+            _allCoursesMap.remove(ci._code);
+            Course cim1 = ci.copyWithID(i-1);
+            if (cim1==null)  // debug 
+                throw new Error("deleteCourse(): copyWitID() returns null");
+            _allCoursesMap.put(cim1._code, cim1);
+            _id2CrsMap.put(i-1, cim1);
+        }
+        // finally, update _curId
+        _curId = Course.getNumCourses();
+        System.err.println("deleteCourse(): course w/ id="+idstr+" is now: "+Course.getCourseById(id));  // debug
     }
     
     
@@ -521,7 +613,12 @@ public class Course implements Comparable {
      * @return Course may be null
      */
     public static Course getCourseByCode(String code) {
-        return _allCoursesMap.get(code);
+        Course crs = _allCoursesMap.get(code);
+        if (crs==null) {  //  warn in the stderr that course was not found...
+            System.err.println("Course.getCourseByCode(): "+
+                               "No course found for code="+code);
+        }
+        return crs;
     }
     
     
@@ -610,6 +707,17 @@ public class Course implements Comparable {
     
     
     /**
+     * returns the exact string <CODE>_toff</CODE> as is read by the 
+     * <CODE>readAllCoursesFromFile()</CODE> method. Example: "alltimes" or 
+     * "everyfall everyspring", or "FA2022 SP2023" etc.
+     * @return String
+     */
+    public String getTermsOffered() {
+        return _toff;
+    }
+    
+    
+    /**
      * return the list of terms that this course is offered. The numbers in the
      * returned list are all greater than zero, and less than Smax (the maximum
      * number of semesters the student may still register for). The number 1 
@@ -654,6 +762,18 @@ public class Course implements Comparable {
                     for (int s=1; s<=Smax; s++) {
                         String tstr = Course.getTermNameByTermNo(s);
                         if (tstr.startsWith("ST")) _termsOffered.add(s);
+                    }
+                }
+                else if ("everysummer1".equals(to)) {
+                    for (int s=1; s<=Smax; s++) {
+                        String tstr = Course.getTermNameByTermNo(s);
+                        if (tstr.startsWith("S1")) _termsOffered.add(s);
+                    }
+                }
+                else if ("everysummer2".equals(to)) {
+                    for (int s=1; s<=Smax; s++) {
+                        String tstr = Course.getTermNameByTermNo(s);
+                        if (tstr.startsWith("S2")) _termsOffered.add(s);
                     }
                 }
                 else if ("next2terms".equals(to)) {
@@ -744,6 +864,50 @@ public class Course implements Comparable {
             if (cs.requiresCourse(code)) return true;
         }
         return false;
+    }
+    
+    
+    /**
+     * creates a new Course object with the data from this one, EXCEPT that the
+     * new object's id is the one given in the argument. NO change in the 
+     * class static maps happens. This is used in the class method 
+     * <CODE>deleteCourse()</CODE>.
+     * @param id int
+     * @return Course  // null if the id is the same as the current object's id
+     * or if the <CODE>_id2CrsMap</CODE> already contains this id.
+     */
+    private final Course copyWithID(int id) {
+        if (id==_id) return null;
+        if (_id2CrsMap.containsKey(id)) return null;
+        // create the synonyms
+        String synonyms = "";
+        for (String s : _synonymCodes) {
+            synonyms += s +" ";
+        }
+        // create the prereqs
+        String prereqs = "";
+        Iterator<Set<String>> ss_it = _prereqs.iterator();
+        while (ss_it.hasNext()) {
+            Set<String> ss = ss_it.next();
+            Iterator<String> sit = ss.iterator();
+            while (sit.hasNext()) {
+                prereqs += sit.next();
+                if (sit.hasNext()) prereqs += "+";
+            }
+            if (ss_it.hasNext()) prereqs += ",";
+        }
+        String coreqs = "";
+        for (String s : _coreqs) {
+            coreqs += s +" ";
+        }
+
+        Course c = new Course(Integer.toString(id), _code, _name, synonyms, 
+                              Integer.toString(_credits), prereqs, coreqs, 
+                              _toff, 
+                              _scheduleDisplayName, 
+                              Integer.toString(_difficultyLevel), 
+                              -1);
+        return c;
     }
     
     
@@ -846,6 +1010,8 @@ public class Course implements Comparable {
     /**
      * return a representation of this <CODE>Course</CODE> object that matches
      * precisely its representation in the "cls.csv" file that stores courses.
+     * Notice the "terms offered" data member is now the contents of the 
+     * <CODE>_toff</CODE> string of the <CODE>Course</CODE> object.
      * @param Smax int needed for computing the terms the courses are offered as
      * numbers (1...Smax).
      * @return String
@@ -887,7 +1053,9 @@ public class Course implements Comparable {
         sb.append(";");
         // now the terms offered: first call the method getTermsOffered to 
         // get the list of integers, then run the rest of the code
+        // itc20260322: what's wrong with using the _toff string data member?
         getTermsOffered(Smax);
+        /*
         if (_termsOffered!=null && _termsOffered.size()>0) {
             for (Integer i : _termsOffered) {
                 String code = getTermNameByTermNo(i);
@@ -895,6 +1063,8 @@ public class Course implements Comparable {
             }
         }
         else sb.append("-");
+        */
+        sb.append(_toff);
         sb.append(";");
         // now the display schedule name if it exists
         if (_scheduleDisplayName!=null && _scheduleDisplayName.length()>1) {
@@ -990,6 +1160,7 @@ public class Course implements Comparable {
         int cur_day = CurrentDate._curDay;
         int cur_mon = CurrentDate._curMonth;
         int cur_year = CurrentDate._curYear;
+        System.err.println("getTermNo("+term+"): cur date="+cur_day+"/"+cur_mon+"/"+cur_year);  // debug
         // 2. compute current term
         //    Fall (5) starts on Sep. 1
         //    Spring (1) starts on Jan. 6
@@ -1005,9 +1176,12 @@ public class Course implements Comparable {
         else if (cur_mon < 9) cur_term = 4;
         else if (cur_mon <= 12) cur_term = 5;
         else throw new Error("cur_term not computable???");
+        System.err.println("getTermNo(): cur_term="+cur_term);  // debug
         // 3. compute term number based on season and year
         String season = term.substring(0, 2);
+        System.err.println("getTermNo(): term-season="+season+".");  // debug
         int year = Integer.parseInt(term.substring(2));
+        System.err.println("getTermNo(): term-year="+year);  // debug
         if (year<cur_year) return 0;
         else if (year==cur_year) {
             if ("FA".equals(season)) {
@@ -1033,7 +1207,9 @@ public class Course implements Comparable {
         }
         else {  // year>cur_year
             int dif = year - cur_year;  // >= 1
+            System.err.println("getTermNo(): dif="+dif);  // debug
             int termno = getTermNumberByTermName(season);
+            System.err.println("getTermNo(): termno="+termno);  // debug
             return dif*5 + termno - cur_term;
         }
     }
@@ -1086,6 +1262,42 @@ public class Course implements Comparable {
     public static boolean isFallTerm(int termno) {
         return isSummerTerm(termno-1);
     }
+
+
+    /**
+     * check whether a given term in the range [1, ..., Smax] is a spring term
+     * (SP).
+     * @param termno int
+     * @return boolean true iff termno corresponds to SP
+     * @throws IllegalArgumentException if termno &le; 0
+     */
+    public static boolean isSpringTerm(int termno) {
+        return isSummerTerm(termno+3);
+    }
+    
+    
+    /**
+     * check whether a given term in the range [1, ..., Smax] is a summer1 term
+     * (S1).
+     * @param termno int
+     * @return boolean true iff termno corresponds to S1
+     * @throws IllegalArgumentException if termno &le; 0
+     */
+    public static boolean isSummer1Term(int termno) {
+        return isSummerTerm(termno+2);
+    }
+    
+    
+    /**
+     * check whether a given term in the range [1, ..., Smax] is a summer2 term
+     * (S2).
+     * @param termno int
+     * @return boolean true iff termno corresponds to S1
+     * @throws IllegalArgumentException if termno &le; 0
+     */
+    public static boolean isSummer2Term(int termno) {
+        return isSummerTerm(termno+1);
+    }
     
     
     /**
@@ -1104,7 +1316,79 @@ public class Course implements Comparable {
             else ++s;
         }
     }
+
+
+    /**
+     * return the first spring (SP) term after termno.
+     * @param termno int
+     * @return int
+     * @throws IllegalArgumentException if termno &lt; 0
+     */
+    public static int nextSpringTerm(int termno) {
+        if (termno < 0)
+            throw new IllegalArgumentException("termno="+termno+
+                                               " must be non-negative...");
+        int s = termno+1;
+        while(true) {
+            if (Course.isSpringTerm(s)) return s;
+            else ++s;
+        }
+    }
+
     
+    /**
+     * return the first summer1 (S1) term after termno.
+     * @param termno int
+     * @return int
+     * @throws IllegalArgumentException if termno &lt; 0
+     */
+    public static int nextSummer1Term(int termno) {
+        if (termno < 0)
+            throw new IllegalArgumentException("termno="+termno+
+                                               " must be non-negative...");
+        int s = termno+1;
+        while(true) {
+            if (Course.isSummer1Term(s)) return s;
+            else ++s;
+        }
+    }
+
+
+    /**
+     * return the first summer2 (S2) term after termno.
+     * @param termno int
+     * @return int
+     * @throws IllegalArgumentException if termno &lt; 0
+     */
+    public static int nextSummer2Term(int termno) {
+        if (termno < 0)
+            throw new IllegalArgumentException("termno="+termno+
+                                               " must be non-negative...");
+        int s = termno+1;
+        while(true) {
+            if (Course.isSummer2Term(s)) return s;
+            else ++s;
+        }
+    }
+
+
+    /**
+     * return the first summer1 (S1) term after termno.
+     * @param termno int
+     * @return int
+     * @throws IllegalArgumentException if termno &lt; 0
+     */
+    public static int nextSummerTerm(int termno) {
+        if (termno < 0)
+            throw new IllegalArgumentException("termno="+termno+
+                                               " must be non-negative...");
+        int s = termno+1;
+        while(true) {
+            if (Course.isSummerTerm(s)) return s;
+            else ++s;
+        }
+    }
+
     
     /**
      * check if the term indexed by the input argument occurs during summer, ie
@@ -1157,6 +1441,29 @@ public class Course implements Comparable {
         result += getTermNameByTermNumber(tt);
         result += Integer.toString(cur_year+year_diff);
         return result;
+    }
+
+    
+    /**
+     * replaces all appearances of oldStr with newStr in the text file filePath.
+     * We assume the file contents can fit into main memory.
+     * @param filePath String
+     * @param oldStr String
+     * @param newStr String
+     * @throws IOException 
+     */
+    static void replaceStringInFile(String filePath, 
+                                            String oldStr, 
+                                            String newStr) throws IOException {
+        // Read all content from the file into a single string
+        String content = new String(Files.readAllBytes(Paths.get(filePath)));
+
+        // Replace all occurrences of oldStr with newStr
+        content = content.replace(oldStr, newStr);
+
+        // Write the modified content back to the file
+        Files.write(Paths.get(filePath), content.getBytes(), 
+                    StandardOpenOption.TRUNCATE_EXISTING);
     }
 
     

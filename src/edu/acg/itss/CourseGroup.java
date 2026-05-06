@@ -6,11 +6,27 @@ import java.io.*;
 /**
  * class is responsible for describing groups from which student must take 
  * certain courses. 
- * It also models concentration areas, which however do not impose constraints 
+ * <p> It models concentration areas, which however do not impose constraints 
  * on every student but only to those who choose a specific concentration area. 
  * <p>Further, it models honor student courses group, which also imposes no 
  * constraint on itself, but instead makes the courses unavailable to non-honor
- * students. Honor student course group is recognized by the name "HonorGroup".
+ * students (this special group has the name "HonorGroup"). Honor student course 
+ * groups are recognized because they start with the name "HonorGroup". Other 
+ * honor student group constraints are only applied to honor-students, and are
+ * simply ignored for non-honors students.
+ * <p> Other groups model capstone project constraints; a course group starting
+ * with the name "capstone" must have a unique course code in the group, and 
+ * the number of credits it contains represent the minimum number of credits 
+ * that the student must have completed before taking the capstone course. The
+ * number of courses it maintains represent the minimum number of concentration
+ * courses the student must have completed before taking the capstone course.
+ * There can be multiple capstone course groups, one for the "normal" program,
+ * and one for the Honors program.
+ * <p> It also models the "OU" constraint that students cannot take more than a
+ * certain number of "OU"-designated courses during an academic year: the group
+ * name must be "OU"; in this case, the list of courses for that group are the
+ * "OU" courses, and the number of courses it maintains is the maximum specified
+ * threshold.
  * <p>It can also model XOR constraints in the sense that if the "min-required 
  * number of courses" number is a string beginning with the equals sign ("=")
  * the constraint is no long interpreted as "at least this much" but instead as
@@ -29,6 +45,19 @@ import java.io.*;
  * must be represented in the selection of courses from the group described in 
  * the next line (a "discipline" being the two or three letter code that is in
  * front of the course code of any course.)
+ * <p> It is also possible to model constraints of the form "at least x courses
+ * from this group must be completed before taking target course T", and/or 
+ * "at least x credits from this group must be completed before taking target 
+ * course T"; this requires the CourseGroup object to have a value for the 
+ * <CODE>_targetCode</CODE> course. Groups having a target course canNOT be:
+ * <ul>
+ * <li> OU constraints
+ * <li> concentration constraints
+ * <li> per-semester holding constraints
+ * <li> exact number required constraints
+ * <li> soft constraints (see below)
+ * <li> soft-order constraints (see below)
+ * </ul>
  * <p>Course groups can also model soft-order precedence constraints: a soft-
  * order precedence constraint is a constraint between 2 courses ci and cj, and 
  * asks that if both courses are to be taken, then ci must be taken before 
@@ -39,6 +68,24 @@ import java.io.*;
  * minimum number of courses represents the maximum distance in time (terms) 
  * that the courses must be taken (unless the number is zero, in which case it
  * is ignored).
+ * <p>Course groups may also model "soft constraints", in that the constraint 
+ * should be enforced unless it makes the plan infeasible, in which case it is
+ * ignored. A group models a "soft constraint" when it includes in the 1st line
+ * as final token the name of a "slack variable": this slack variable is to be
+ * added to the LHS in the formulation of the constraint with a large enough
+ * coefficient so that when the slack variable is set to 1, the constraint 
+ * becomes inactive. The slack variable will also appear in the objective 
+ * function formulation, so as to avoid its setting to 1, unless the MIP would
+ * become infeasible otherwise. SOFT constraints can only be the "standard"
+ * group constraints that ask for a minimum, equal, or maximum number of courses
+ * regardless of terms etc. Soft constraints cannot be:
+ * <ul>
+ * <li> OU constraints
+ * <li> capstone constraints
+ * <li> concentration area constraints
+ * <li> soft-order constraints
+ * <li> constraints with target variable (mentioned already above)
+ * </ul>
  * <p>Finally, it models capstone project course constraints, which ask for a 
  * minimum number of credits before taking the capstone, and optionally, for a 
  * number of courses from their concentration area as well. Capstone project 
@@ -103,6 +150,22 @@ public class CourseGroup {
      */
     private final int _minNumDisciplines;
    
+    /**
+     * when not null, it specifies the "target course" code for this group.
+     */
+    private final String _targetCode;
+    
+    
+    /**
+     * when not null, the string is the name of a slack variable associated 
+     * with this "soft" constraint. The values of the coefficients with which
+     * it appears in the objective function and the constraint in the MIP are
+     * given as <CODE>_objSlackCoeff</CODE>. No constraint coefficients are 
+     * needed. The slack variables are always continuous.
+     */
+    private final String _slackName;
+    public static final double _objSlackCoeff = 1000.0;
+    
     
     /**
      * create a new CourseGroup (used by the <CODE>CourseGroupEditor</CODE>).
@@ -112,7 +175,7 @@ public class CourseGroup {
     public static CourseGroup createCourseGroup(String name) {
         CourseGroup cg = new CourseGroup(name, false, 
                                          new ArrayList<>(), 
-                                         0, false, false, 0, 1);
+                                         0, false, false, 0, 1, null, null);
         _allCourseGroupsMap.put(name, cg);
         return cg;
     }
@@ -132,12 +195,13 @@ public class CourseGroup {
      * read a course group from a text file and return the relevant group.
      * Method must be called after all courses are read in by invoking
      * <CODE>Course.readAllCourses(filename)</CODE>.
-     * The file must contain just 2 lines with the following format (semi-column
-     * separated):
+     * The file must contain between 2 and 3 lines with the following format 
+     * (semi-column separated):
      * <ul>
      * <li>&lt;groupname&gt;;&lt;is_concentration&gt;;
-     * [[&lt;]=]&lt;minnumcoursesreqd&gt;;&lt;minnumcreditsreqd&gt;
+     * [[&lt;]=]&lt;minnumcoursesreqd&gt;;&lt;minnumcreditsreqd&gt;[;slack_var]
      * <li>&lt;coursecode&gt;[;coursecode]*
+     * <li>[targetcoursecode]
      * </ul>
      * The 3rd field of the 1st line (&lt;minnumcoursesreqd&gt;) must be a 
      * number of course, but it may be preceded by either the symbol "=" in 
@@ -156,10 +220,19 @@ public class CourseGroup {
      * sign) in which case, there is no minimum number of credits constraint but
      * instead, there is a minimum number of different disciplines constraint 
      * set forth. For more, read the overall class documentation.
-     * The file may also contain any lines AFTER the first two lines that start 
-     * with "#" that designate comments (they are never read).
+     * The 5th and last (optional) field must be a string starting with a letter
+     * that represents the name of the slack variable associated with this SOFT
+     * constraint.
+     * There might be a third line containing the course code of the "target"
+     * course, which means the fields minnumcoursesreqd and minnumcreditsreqd
+     * are interpreted as the min number of courses (credits) from the group 
+     * that must be completed before taking the target course.
+     * The file may also contain any lines AFTER the first two or three lines 
+     * that start with "#" that designate comments (they are never read).
      * @param filename String
      * @return CourseGroup
+     * @throws IllegalArgumentException if name already exists in the static
+     * map mapping group-names to CourseGroup objects
      */
     public static CourseGroup readCourseGroup(String filename) {
         try(BufferedReader br = new BufferedReader(new FileReader(filename))) {
@@ -193,12 +266,25 @@ public class CourseGroup {
                 minnumdisciplines = -minnumcredits;
                 minnumcredits = 0;
             }
+            String slackVar = null;
+            if (data.length>4) {  // constraint is SOFT constraint
+                slackVar = data[4];
+            }
             data = br.readLine().split(";");
             List<String> codes = new ArrayList<>();
             codes.addAll(Arrays.asList(data));
+            String target = br.readLine();  // 3rd and last line, may  be null
+            if (target!=null && target.startsWith("#")) target = null;
+            if (target!=null) target = target.trim();  // if white space nullify
+            if (target!=null && target.length()<=1) target = null;
             cg = new CourseGroup(name, is_conc, codes, 
                                  minnumcourses, isExact, holdsPerSemester,
-                                 minnumcredits, minnumdisciplines);
+                                 minnumcredits, minnumdisciplines, slackVar,
+                                 target);
+            if (_allCourseGroupsMap.containsKey(name)) 
+                throw new IllegalArgumentException("course group with name="+
+                                                   name+
+                                                   " already exists in map");
             _allCourseGroupsMap.put(name, cg);
             return cg;
         }
@@ -277,21 +363,75 @@ public class CourseGroup {
      * @param holdsPerSemester boolean refers to the previous variable also
      * @param minCreditsReq int may be zero
      * @param minNumDisciplines int must always be &ge; 1
+     * @param slackVar String name of the slack variable in a soft constraint;
+     * null if the constraint is NOT soft
+     * @param targetCode String name of the target course code, is usually null
+     * @throws IllegalStateException if targetCode is not null AND at the same
+     * time, this course group is a concentration area constraint, OU constraint
+     * per-semester holding constraint, exact value constraint, soft constraint
+     * or soft-order constraint. Also throws if constraint is soft constraint 
+     * AND is OU, capstone, soft-order or concentration.
      */
     private CourseGroup(String name, boolean isConcentrationArea,
                         List<String> groupCodes, 
                         int minNumCoursesReq, 
                         boolean isExact, boolean holdsPerSemester, 
                         int minCreditsReq,
-                        int minNumDisciplines) {
+                        int minNumDisciplines,
+                        String slackVar,
+                        String targetCode) {
+        // consistency checks for target + slack variables
+        if (slackVar != null && targetCode!=null) 
+            throw new IllegalStateException("slack="+slackVar+
+                                            " AND target="+targetCode);
+        if (isConcentrationArea && targetCode!=null)
+            throw new IllegalStateException("course group is concentration"+
+                                            " AND target="+targetCode);
+        if (holdsPerSemester && targetCode!=null)
+            throw new IllegalStateException("course group is per-semester"+
+                                            " AND target="+targetCode);
+        if (isExact && targetCode!=null)
+            throw new IllegalStateException("course group is exact-value"+
+                                            " AND target="+targetCode);
+        if ("OU".equals(name) && targetCode != null) 
+            throw new IllegalStateException("course group is OU constraint"+
+                                            " AND target="+targetCode);
+        if (name.startsWith("softorder") && targetCode!=null)
+            throw new IllegalStateException("course group is soft-order"+
+                                            " AND target="+targetCode);
+        if (isConcentrationArea && slackVar!=null)
+            throw new IllegalStateException("course group is concentration"+
+                                            " AND slack="+slackVar);
+        if ("OU".equals(name) && slackVar!=null)
+            throw new IllegalStateException("course group is OU constraint"+
+                                            " AND slack="+slackVar);
+        if (name.startsWith("capstone") && slackVar!=null)
+            throw new IllegalStateException("course group is capstone"+
+                                            " AND slack="+slackVar);
+        if (name.startsWith("softorder") && slackVar!=null)
+            throw new IllegalStateException("course group is soft-order"+
+                                            " AND slack="+slackVar);
+            
         _groupName = name;
+        _slackName = slackVar;
         _isConcentrationArea = isConcentrationArea;
         _allGroupCodes = new ArrayList<>(groupCodes);
+        _targetCode = targetCode;
         _minNumCoursesReq = minNumCoursesReq;
         _minNumCreditsReq = minCreditsReq;
         _minNumDisciplines = minNumDisciplines;
         _isExact = isExact;
         _holdsPerSemester = holdsPerSemester;
+        // debug
+        System.err.println("created course group "+name+
+                           " with conc="+_isConcentrationArea+
+                           " slackName="+_slackName+
+                           " isExact="+_isExact+
+                           " holdsPerTerm="+_holdsPerSemester+
+                           " minNumCourses="+_minNumCoursesReq+
+                           " minCreditsReq="+_minNumCreditsReq+
+                           " minNumDisciplines="+_minNumDisciplines+
+                           " targetClassCode="+_targetCode);
     }
     
     
@@ -300,6 +440,21 @@ public class CourseGroup {
      * @return String
      */
     public final String getGroupName() { return _groupName; }
+    
+    
+    /**
+     * get the slack name for this constraint group; the return value is NOT
+     * null IFF the course group represents a SOFT constraint.
+     * @return String
+     */
+    public final String getSlackVarName() { return _slackName; }
+   
+    
+    /**
+     * return true IFF the <CODE>_slackName</CODE> data member is not null.
+     * @return boolean
+     */
+    public final boolean isSoftConstraint() { return _slackName != null; }
     
     
     /**
@@ -323,11 +478,10 @@ public class CourseGroup {
      * checks if this given group represents the OU-constraint that asks for 
      * an upper limit on the number of OU courses taken every academic year (ie
      * from any Fall to the next SummerTerm). 
-     * @return boolean true iff this object's group name starts with the prefix
-     * "OU".
+     * @return boolean true iff this object's group name equals "OU".
      */
     public final boolean isOUConstraint() {
-        return _groupName.startsWith("OU");
+        return "OU".equals(_groupName);
     }
     
     
@@ -342,19 +496,20 @@ public class CourseGroup {
     
     
     /**
-     * checks if this given group represents the courses only available to honor
+     * checks if this given group represents courses only available to honor
      * students.
-     * @return  boolean true iff this object's group name is "HonorGroup".
+     * @return  boolean true iff this object's group name starts with 
+     * "HonorGroup".
      */
     public final boolean isHonorStudentCourseGroup() {
-        return "HonorGroup".equals(_groupName);
+        return _groupName.startsWith("HonorGroup");
     }
     
     
     /**
      * returns all course codes belonging to this group (synonyms are not 
      * included).
-     * @return Set&lt;String&gt;
+     * @return Set&lt;String&gt;  // never null
      */
     public List<String> getGroupCodes() {
         List<String> result = new ArrayList<>(_allGroupCodes);
@@ -363,9 +518,18 @@ public class CourseGroup {
     
     
     /**
+     * returns the <CODE>_targetCode</CODE> variable.
+     * @return String  // usually null
+     */
+    public String getTargetCode() {
+        return _targetCode;
+    }
+    
+    
+    /**
      * returns all course codes belonging to this group, including synonyms for
      * each class.
-     * @return Set&lt;String&gt;
+     * @return Set&lt;String&gt;  // never null
      */
     public Set<String> getAllGroupCodes() {
         Set<String> result = new HashSet<>(_allGroupCodes);

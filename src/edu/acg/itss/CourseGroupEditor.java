@@ -103,6 +103,10 @@ public class CourseGroupEditor extends javax.swing.JFrame {
         _isCapstoneChkBox = new javax.swing.JCheckBox();
         _softOrderChkBox = new javax.swing.JCheckBox();
         _OUChkBox = new javax.swing.JCheckBox();
+        _softLabel = new javax.swing.JLabel();
+        _slackNameFld = new javax.swing.JTextField();
+        jLabel1 = new javax.swing.JLabel();
+        _targetCodeFld = new javax.swing.JTextField();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
@@ -217,6 +221,11 @@ public class CourseGroupEditor extends javax.swing.JFrame {
         });
 
         _concAreaChkBox.setText("Concentration (Focus) Area Constraint");
+        _concAreaChkBox.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                _concAreaChkBoxActionPerformed(evt);
+            }
+        });
 
         _isCapstoneChkBox.setText("Capstone Project Constraint");
         _isCapstoneChkBox.setEnabled(false);
@@ -226,6 +235,13 @@ public class CourseGroupEditor extends javax.swing.JFrame {
 
         _OUChkBox.setText("OU Constraint");
         _OUChkBox.setEnabled(false);
+
+        _softLabel.setText("Slack Variable Name (only if constraint is SOFT): ");
+
+        _slackNameFld.setColumns(10);
+        _slackNameFld.setToolTipText("non-empty ONLY if this group represents a SOFT constraint");
+
+        jLabel1.setText("Target Code:");
 
         javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
         jPanel1.setLayout(jPanel1Layout);
@@ -238,23 +254,30 @@ public class CourseGroupEditor extends javax.swing.JFrame {
                     .addComponent(_removeCourseBtn))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jLabel3)
-                    .addComponent(jLabel4))
-                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(jPanel1Layout.createSequentialGroup()
-                        .addGap(4, 4, 4)
-                        .addComponent(_courseCodeFld, javax.swing.GroupLayout.PREFERRED_SIZE, 75, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jButton1)
-                        .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
-                    .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel1Layout.createSequentialGroup()
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                            .addComponent(_courseTitleFld, javax.swing.GroupLayout.Alignment.LEADING)
+                        .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addComponent(jLabel3)
+                            .addComponent(jLabel4))
+                        .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel1Layout.createSequentialGroup()
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                                    .addComponent(_courseTitleFld, javax.swing.GroupLayout.Alignment.LEADING)
+                                    .addGroup(jPanel1Layout.createSequentialGroup()
+                                        .addGap(0, 600, Short.MAX_VALUE)
+                                        .addComponent(_addCourseBtn)))
+                                .addContainerGap())
                             .addGroup(jPanel1Layout.createSequentialGroup()
-                                .addGap(0, 600, Short.MAX_VALUE)
-                                .addComponent(_addCourseBtn)))
-                        .addContainerGap())))
+                                .addGap(4, 4, 4)
+                                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                                    .addComponent(_targetCodeFld)
+                                    .addComponent(_courseCodeFld, javax.swing.GroupLayout.DEFAULT_SIZE, 75, Short.MAX_VALUE))
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                .addComponent(jButton1)
+                                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))))
+                    .addGroup(jPanel1Layout.createSequentialGroup()
+                        .addComponent(jLabel1)
+                        .addGap(0, 0, Short.MAX_VALUE))))
             .addGroup(jPanel1Layout.createSequentialGroup()
                 .addContainerGap()
                 .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -272,28 +295,35 @@ public class CourseGroupEditor extends javax.swing.JFrame {
                                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                                         .addComponent(_newGroupNameFld))
                                     .addComponent(jScrollPane2)))
-                            .addComponent(_numCoursesPerTermChkBox)
                             .addGroup(jPanel1Layout.createSequentialGroup()
-                                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
+                                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                    .addComponent(_numCoursesPerTermChkBox)
                                     .addGroup(jPanel1Layout.createSequentialGroup()
-                                        .addComponent(_isExactChkBox)
+                                        .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
+                                            .addGroup(jPanel1Layout.createSequentialGroup()
+                                                .addComponent(_isExactChkBox)
+                                                .addGap(18, 18, 18)
+                                                .addComponent(jLabel5))
+                                            .addComponent(jLabel6))
+                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                        .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                                            .addComponent(_numCoursesFld)
+                                            .addComponent(_minCreditsFld, javax.swing.GroupLayout.DEFAULT_SIZE, 70, Short.MAX_VALUE))
+                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                        .addComponent(_softLabel)
+                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                        .addComponent(_slackNameFld, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                    .addGroup(jPanel1Layout.createSequentialGroup()
+                                        .addComponent(_honorStudentChkBox)
+                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                        .addComponent(_concAreaChkBox)
                                         .addGap(18, 18, 18)
-                                        .addComponent(jLabel5))
-                                    .addComponent(jLabel6))
-                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                                    .addComponent(_numCoursesFld)
-                                    .addComponent(_minCreditsFld, javax.swing.GroupLayout.DEFAULT_SIZE, 70, Short.MAX_VALUE)))
-                            .addGroup(jPanel1Layout.createSequentialGroup()
-                                .addComponent(_honorStudentChkBox)
-                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                .addComponent(_concAreaChkBox)
-                                .addGap(18, 18, 18)
-                                .addComponent(_isCapstoneChkBox)
-                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                                .addComponent(_softOrderChkBox)
-                                .addGap(18, 18, 18)
-                                .addComponent(_OUChkBox)))
+                                        .addComponent(_isCapstoneChkBox)
+                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                        .addComponent(_softOrderChkBox)
+                                        .addGap(18, 18, 18)
+                                        .addComponent(_OUChkBox)))
+                                .addGap(0, 0, Short.MAX_VALUE)))
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                         .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
                             .addComponent(_newGroupBtn, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
@@ -319,6 +349,10 @@ public class CourseGroupEditor extends javax.swing.JFrame {
                             .addComponent(jLabel8)
                             .addComponent(_newGroupNameFld, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                             .addComponent(_newGroupBtn))
+                        .addGap(18, 18, 18)
+                        .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                            .addComponent(jLabel1)
+                            .addComponent(_targetCodeFld, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                         .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                             .addComponent(jLabel3)
@@ -351,7 +385,9 @@ public class CourseGroupEditor extends javax.swing.JFrame {
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(jLabel6)
-                    .addComponent(_minCreditsFld, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(_minCreditsFld, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(_softLabel)
+                    .addComponent(_slackNameFld, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 7, Short.MAX_VALUE)
                 .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(_saveGroupBtn)
@@ -405,17 +441,46 @@ public class CourseGroupEditor extends javax.swing.JFrame {
         int numcr = g.getMinNumCreditsReqd();
         this._minCreditsFld.setText(Integer.toString(numcr));
         this._saveGroupBtn.setEnabled(true);
+        if (g.isSoftConstraint())
+            this._slackNameFld.setText(g.getSlackVarName());
+        else this._slackNameFld.setText("");
+        if (g.getTargetCode()==null) {
+            this._targetCodeFld.setText("");
+            if (g.isCoursesReqdExact() || g.isHoldsPerSemester() || 
+                g.isConcentrationArea() || g.isSoftConstraint() ||
+                g.isOUConstraint() || g.isSoftOrderPrecedenceConstraint())
+                this._targetCodeFld.setEnabled(false);  // indicate such
+                                                        // constraints can't 
+                                                        // have targets.
+        }
+        else {
+            this._targetCodeFld.setText(g.getTargetCode());
+            this._targetCodeFld.setEnabled(true);
+        }
     }//GEN-LAST:event__groupsLstMousePressed
 
     private void _isExactChkBoxActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__isExactChkBoxActionPerformed
         if (this._isExactChkBox.isSelected()) {
             this._numCoursesPerTermChkBox.setSelected(false);
+            this._targetCodeFld.setText("");
+            this._targetCodeFld.setEnabled(false);
+        }
+        else {
+            this._targetCodeFld.setEnabled(true);
         }
     }//GEN-LAST:event__isExactChkBoxActionPerformed
 
     private void _numCoursesPerTermChkBoxActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__numCoursesPerTermChkBoxActionPerformed
         if (this._numCoursesPerTermChkBox.isSelected()) {
             this._isExactChkBox.setSelected(false);
+            this._slackNameFld.setText("");
+            this._slackNameFld.setEnabled(false);
+            this._targetCodeFld.setText("");
+            this._targetCodeFld.setEnabled(false);
+        }
+        else {
+            this._slackNameFld.setEnabled(true);
+            this._targetCodeFld.setEnabled(true);
         }
     }//GEN-LAST:event__numCoursesPerTermChkBoxActionPerformed
 
@@ -469,6 +534,14 @@ public class CourseGroupEditor extends javax.swing.JFrame {
         }
         else {
             this._courseTitleFld.setText(c.getName());
+            // don't add course if it is the target course
+            if (c.getCode().equals(this._targetCodeFld.getText().trim())) {
+                JOptionPane.showConfirmDialog(null, 
+                                              "course is Target for group "+
+                                              "thus cannot be added to "+
+                                              "group courses");
+                return;
+            }
             // add course to list
             this._coursesListModel.addElement(ccode);
             this._addCourseBtn.setEnabled(false);
@@ -510,6 +583,10 @@ public class CourseGroupEditor extends javax.swing.JFrame {
         this._numCoursesFld.setText("0");
         this._numCoursesPerTermChkBox.setSelected(false);
         this._minCreditsFld.setText("0");
+        this._slackNameFld.setText("");
+        this._slackNameFld.setEnabled(true);
+        this._targetCodeFld.setText("");
+        this._targetCodeFld.setEnabled(true);
         this._saveGroupBtn.setEnabled(false);
     }//GEN-LAST:event__removeGroupBtnActionPerformed
 
@@ -540,6 +617,23 @@ public class CourseGroupEditor extends javax.swing.JFrame {
         this._saveGroupBtn.setEnabled(true);
         // delete new group name from field
         this._newGroupNameFld.setText("");
+        this._slackNameFld.setText("");
+        if (cg.isCapstoneProjectGroup() || 
+            cg.isHoldsPerSemester() || 
+            cg.isHonorStudentCourseGroup() ||
+            cg.isOUConstraint() ||
+            cg.isSoftOrderPrecedenceConstraint()) {
+            this._slackNameFld.setEnabled(false);
+        }
+        this._targetCodeFld.setText("");
+        if (cg.isHoldsPerSemester() || 
+            cg.isConcentrationArea() ||
+            cg.isCoursesReqdExact() ||
+            cg.isOUConstraint() ||
+            cg.isSoftOrderPrecedenceConstraint()) {
+            this._targetCodeFld.setEnabled(false);
+        }
+        
     }//GEN-LAST:event__newGroupBtnActionPerformed
 
     
@@ -547,8 +641,14 @@ public class CourseGroupEditor extends javax.swing.JFrame {
         int sel_ind = this._groupCoursesLst.getSelectedIndex();
         if (sel_ind<0) return;
         this._removeCourseBtn.setEnabled(true);
+        // in addition, show the course's title on the appropriate text-box
+        String cname = (String) this._coursesListModel.get(sel_ind);
+        Course sel_course = Course.getCourseByCode(cname);
+        this._courseCodeFld.setText(cname);
+        this._courseTitleFld.setText(sel_course.getName());
     }//GEN-LAST:event__groupCoursesLstMousePressed
 
+    
     private void _saveGroupBtnActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__saveGroupBtnActionPerformed
         int sel_ind = this._groupsLst.getSelectedIndex();
         if (sel_ind<0) return;
@@ -593,7 +693,12 @@ public class CourseGroupEditor extends javax.swing.JFrame {
             pw.print(";");
             final int min_credits_reqd = 
                     Integer.parseInt(this._minCreditsFld.getText().trim());
-            pw.println(min_credits_reqd);
+            pw.print(min_credits_reqd);
+            String slackName = this._slackNameFld.getText().trim();
+            if (slackName.length()>0) {
+                pw.println(";"+slackName);
+            }
+            else pw.println();
             // write second line using the data in the list-model
             /*
             Iterator<String> cit = cg.getGroupCodes().iterator();
@@ -610,6 +715,11 @@ public class CourseGroupEditor extends javax.swing.JFrame {
                 if (i<sz-1) pw.print(";");
             }
             pw.println();
+            // write 3rd line if needed
+            String target = this._targetCodeFld.getText().trim();
+            if (target.length()>0) {
+                pw.println(target);
+            }
             pw.flush();
             // no need for pw.close()
             // update in-memory data structures
@@ -625,6 +735,20 @@ public class CourseGroupEditor extends javax.swing.JFrame {
             JOptionPane.showConfirmDialog(null, "failed to save group "+gname);
         }
     }//GEN-LAST:event__saveGroupBtnActionPerformed
+
+    private void _concAreaChkBoxActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__concAreaChkBoxActionPerformed
+        // if user checks this button, no slack variables can exist
+        if (this._concAreaChkBox.isSelected()) {
+            this._slackNameFld.setText("");
+            this._slackNameFld.setEnabled(false);
+            this._targetCodeFld.setText("");
+            this._targetCodeFld.setEnabled(false);
+        }
+        else {
+            this._slackNameFld.setEnabled(true);
+            this._targetCodeFld.setEnabled(true);
+        }
+    }//GEN-LAST:event__concAreaChkBoxActionPerformed
 
     
     /**
@@ -688,8 +812,12 @@ public class CourseGroupEditor extends javax.swing.JFrame {
     private javax.swing.JButton _removeCourseBtn;
     private javax.swing.JButton _removeGroupBtn;
     private javax.swing.JButton _saveGroupBtn;
+    private javax.swing.JTextField _slackNameFld;
+    private javax.swing.JLabel _softLabel;
     private javax.swing.JCheckBox _softOrderChkBox;
+    private javax.swing.JTextField _targetCodeFld;
     private javax.swing.JButton jButton1;
+    private javax.swing.JLabel jLabel1;
     private javax.swing.JLabel jLabel2;
     private javax.swing.JLabel jLabel3;
     private javax.swing.JLabel jLabel4;

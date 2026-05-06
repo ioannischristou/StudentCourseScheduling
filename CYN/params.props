@@ -12,4 +12,6 @@ MinNumCourses4Sophomore=3
 ProgramCodes2Maximize=ITC;MA\\LE-core-stat
 ProgramCode=ITC
 AllowEdit=true
+#SCIP_path=/Users/itc/apps/SCIPOptSuite800/bin/scip.exe
+SCIP_path=./bin/SCIPOptSuite800/bin/scip.exe
 CourseCSVFileHeader=#Code;Name;Synonyms;Credits;Pre-requisites;Co-requisites;Terms Offered;Schedule Name;Difficulty Level
