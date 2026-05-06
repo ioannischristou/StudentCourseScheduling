@@ -1241,26 +1241,37 @@ public class MainGUI extends javax.swing.JFrame {
     
     /**
      * invoke the <CODE>CourseEditor</CODE> to edit courses, and then re-load
-     * the edited courses.
+     * the edited courses. The editor runs in a new thread to avoid "GUI freeze"
+     * issues. Upon editor closing, the program exits.
      * @param evt 
      */
     private void _editCoursesMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__editCoursesMenuItemActionPerformed
         try {
             this.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
-            Runtime rt = Runtime.getRuntime();
-            Process p = rt.exec("java -cp ./dist/ITStudentCourseScheduling.jar"+
-                                " edu.acg.itss.CourseEditor "+
-                                MainGUI._dir2Files);
-            int retval = p.waitFor();  // wait until the CourseEditor terminates
-            if (retval==0) {
-                Course.reset();
-                populateCourseListModels();
+            int res = JOptionPane.
+                          showConfirmDialog(null, "Proceeding will terminate "+
+                                                  "the main SCORER GUI...");
+            if (res == JOptionPane.YES_OPTION) {
+                Thread course_edit_thread = new Thread(new Runnable() {
+                    public void run() {
+                        try {
+                            Runtime rt = Runtime.getRuntime();
+                            Process p = 
+                                rt.exec("java -cp "+
+                                        "./dist/ITStudentCourseScheduling.jar"+
+                                        " edu.acg.itss.CourseEditor "+
+                                        MainGUI._dir2Files);
+                            // int retval = p.waitFor();  // wait until CourseEditor terminates
+                            System.exit(0);
+                        }
+                        catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                });
+                course_edit_thread.start();
+                // course_edit_thread.join();  // wait for thread to terminate
             }
-            else if (retval==-1) {  // a modifyCourse() occurred that changed
-                                    // the Course object's code, so must close.
-                System.exit(0);
-            }
-            else throw new IllegalStateException("CourseEditor process failed");
         }
         catch (Exception e) {
             e.printStackTrace();
@@ -1274,29 +1285,43 @@ public class MainGUI extends javax.swing.JFrame {
     
     /**
      * invoke the <CODE>CourseGroupEditor</CODE> to edit course groups (that 
-     * specify constraints for the study plan) and re-load the edited groups.
+     * specify constraints for the study plan) in a new thread. Upon starting
+     * the new thread, the main GUI terminates.
      * @param evt 
      */
     private void _editCourseGroupsMenuItemActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event__editCourseGroupsMenuItemActionPerformed
         try {
             this.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
-            Runtime rt = Runtime.getRuntime();
-            Process p = rt.exec("java -cp ./dist/ITStudentCourseScheduling.jar"+
-                                " edu.acg.itss.CourseGroupEditor "+
-                                MainGUI._dir2Files);
-            int retval = p.waitFor();  // wait until the CourseEditor terminates
-            if (retval==0) {
-                Course.reset();
-                CourseGroup.reset();
-                populateCourseListModels();
+            int res = JOptionPane.
+                          showConfirmDialog(null, "Proceeding will terminate "+
+                                                  "the main SCORER GUI...");
+            if (res == JOptionPane.YES_OPTION) {
+                Thread course_group_edit_thread = new Thread(new Runnable() {
+                    public void run() {
+                        try {
+                            Runtime rt = Runtime.getRuntime();
+                            Process p = 
+                                rt.exec("java -cp "+
+                                        "./dist/ITStudentCourseScheduling.jar"+
+                                        " edu.acg.itss.CourseGroupEditor "+
+                                        MainGUI._dir2Files);
+                            // int retval = p.waitFor();  // wait until CourseGroupEditor terminates
+                            System.exit(0);
+                        }
+                        catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                });
+                course_group_edit_thread.start();
+                // course_group_edit_thread.join();  // wait for thread to terminate
             }
-            else throw new IllegalStateException("process failed");
         }
         catch (Exception e) {
             e.printStackTrace();
-            JOptionPane.showConfirmDialog(null, "CourseGroupEditor failed.");
+            JOptionPane.showConfirmDialog(null, "CourseGroupEditor failed to run.");
         }
-        finally { 
+        finally {
             this.setCursor(Cursor.getPredefinedCursor(Cursor.DEFAULT_CURSOR));            
         }
     }//GEN-LAST:event__editCourseGroupsMenuItemActionPerformed

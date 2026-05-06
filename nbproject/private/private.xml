@@ -5,18 +5,16 @@
         <group>
             <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/src/edu/acg/itss/DesiredCourses.java</file>
             <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/src/edu/acg/itss/ScheduleParams.java</file>
+            <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/src/edu/acg/itss/CourseEditor.java</file>
+            <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/src/edu/acg/itss/Course.java</file>
+            <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/src/edu/acg/itss/CodeNameAllowedTerms.java</file>
             <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/src/edu/acg/itss/CourseGroup.java</file>
             <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/src/edu/acg/itss/MIPHandler.java</file>
             <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/src/edu/acg/itss/PassedCourses.java</file>
             <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/src/edu/acg/itss/CourseGroupEditor.java</file>
-            <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/src/edu/acg/itss/CurrentDate.java</file>
-            <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/PSY-2026/params.props</file>
-            <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/PSY-2026/HonorGroup.grp</file>
-            <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/src/edu/acg/itss/CourseEditor.java</file>
-            <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/src/edu/acg/itss/Course.java</file>
-            <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/src/edu/acg/itss/CodeNameAllowedTerms.java</file>
             <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/src/edu/acg/itss/ProgramCodeStruct.java</file>
             <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/src/edu/acg/itss/MainGUI.java</file>
+            <file>file:/C:/Users/itc/Documents/lectures/ACG/IT/services/ITStudentCourseScheduling/src/edu/acg/itss/CurrentDate.java</file>
         </group>
     </open-files>
 </project-private>
