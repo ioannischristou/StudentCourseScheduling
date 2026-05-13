@@ -29,11 +29,16 @@ public class ScheduleParams {
     /**
      * return the minimum required total number of credits required for 
      * graduation. This corresponds to the value of the property "Tc" in the 
-     * file.
-     * @return int 
+     * file ("TcHonor" for honors' students).
+     * @param isHonorStudent boolean
+     * @return int if the key "TcHonor" is not available, returns the value
+     * of the key "Tc".
      */
-    public int getMinReqdTotalCredits() {
-        return Integer.parseInt(_props.getProperty("Tc"));
+    public int getMinReqdTotalCredits(boolean isHonorStudent) {
+        int tc = Integer.parseInt(_props.getProperty("Tc"));
+        if (!isHonorStudent) return tc;
+        return Integer.parseInt(_props.getProperty("TcHonor", 
+                                                   Integer.toString(tc)));
     }
     
     
@@ -93,10 +98,17 @@ public class ScheduleParams {
     /**
      * return the maximum number of courses a student may be attending at the 
      * same time during any of the summer seasons (S1, S2, ST).
+     * @param isHonorStudent boolean
      * @return int
      */
-    public int getSummerConcNMax() {
-        return Integer.parseInt(_props.getProperty("SummerConcNMax"));
+    public int getSummerConcNMax(boolean isHonorStudent) {
+        int scnmx = Integer.parseInt(_props.getProperty("SummerConcNMax"));
+        if (!isHonorStudent)
+            return scnmx;
+        else
+            return Integer.parseInt(_props.getProperty("SummerConcNMaxHonor",
+                                                       Integer.toString(scnmx))
+                                   );
     }
 
 
@@ -104,12 +116,16 @@ public class ScheduleParams {
      * return the maximum number of courses a student may be attending at the 
      * same time during the summer seasons (S1, S2) NOT including the summer
      * term (ST).
+     * @param isHonorStudent boolean
      * @return int  // if property not found, returns "2"
      */
-    public int getSummer12ConcNMax() {
+    public int getSummer12ConcNMax(boolean isHonorStudent) {
         final String default_val = "2";
-        return Integer.parseInt(_props.getProperty("Summer12ConcNMax", 
-                                                   default_val));
+        if (!isHonorStudent)
+            return Integer.parseInt(_props.getProperty("Summer12ConcNMax", 
+                                                       default_val));
+        else return Integer.parseInt(_props.getProperty("Summer12ConcNMaxHonor", 
+                                                        default_val));
     }
 
 

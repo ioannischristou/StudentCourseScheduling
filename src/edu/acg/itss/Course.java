@@ -1292,7 +1292,7 @@ public class Course implements Comparable {
      * check whether a given term in the range [1, ..., Smax] is a summer2 term
      * (S2).
      * @param termno int
-     * @return boolean true iff termno corresponds to S1
+     * @return boolean true iff termno corresponds to S2
      * @throws IllegalArgumentException if termno &le; 0
      */
     public static boolean isSummer2Term(int termno) {

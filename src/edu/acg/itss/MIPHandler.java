@@ -618,7 +618,7 @@ public class MIPHandler {
         // 2.5 fifth, credit constraint
         if (!group_names.contains("CREDIT")) {
             prob.append("\\ 6. total credit constraints\n");
-            final int Tc = _params.getMinReqdTotalCredits();
+            final int Tc = _params.getMinReqdTotalCredits(isHonorStudent);
             prob.append("c"+ccount+": ");
             ++ccount;
             for (int i=0; i<N; i++) {
@@ -826,8 +826,8 @@ public class MIPHandler {
         }
         if (!group_names.contains("SUMMER")) {
             prob.append("\\ 7.5 summer max #concurrent-courses constraint\n");
-            final int nmax = _params.getSummerConcNMax();
-            final int n12max = _params.getSummer12ConcNMax();
+            final int nmax = _params.getSummerConcNMax(isHonorStudent);
+            final int n12max = _params.getSummer12ConcNMax(isHonorStudent);
             for (int s=1; s<=Smax; s++) {
                 if (Course.isSummer1Term(s) && n12max>=0) {
                     prob.append("c"+ccount+": "); ++ccount;
@@ -848,29 +848,32 @@ public class MIPHandler {
                     }                    
                 }
                 if (Course.happensDuringSummer(s) && nmax>=0 && s+2<=Smax) {
-                    prob.append("c"+ccount+": "); ++ccount;
-                    // create constraint for all courses during S1+ST
-                    for (int i=0; i<N; i++) {
-                        prob.append("x_"+i+"_"+s+" + ");
+                    if (Course.isSummer1Term(s)) {
+                        // create constraint for all courses during S1+ST
+                        prob.append("c"+ccount+": "); ++ccount;
+                        for (int i=0; i<N; i++) {
+                            prob.append("x_"+i+"_"+s+" + ");
+                        }
+                        int st = s+2;
+                        for (int i=0; i<N; i++) {
+                            prob.append("x_"+i+"_"+st);
+                            if (i<N-1) prob.append(" + ");
+                            else prob.append(" <= "+nmax+"\n");
+                        }
                     }
-                    int st = s+2;
-                    for (int i=0; i<N; i++) {
-                        prob.append("x_"+i+"_"+st);
-                        if (i<N-1) prob.append(" + ");
-                        else prob.append(" <= "+nmax+"\n");
+                    if (Course.isSummer2Term(s)) {
+                        // create constraint for all courses during S2+ST
+                        prob.append("c"+ccount+": "); ++ccount;
+                        for (int i=0; i<N; i++) {
+                            prob.append("x_"+i+"_"+s+" + ");
+                        }
+                        int st = s+1;
+                        for (int i=0; i<N; i++) {
+                            prob.append("x_"+i+"_"+st);
+                            if (i<N-1) prob.append(" + ");
+                            else prob.append(" <= "+nmax+"\n");
+                        }
                     }
-                    // create constraint for all courses during S2+ST
-                    int s2 = s+1;
-                    prob.append("c"+ccount+": "); ++ccount;
-                    for (int i=0; i<N; i++) {
-                        prob.append("x_"+i+"_"+s2+" + ");
-                    }
-                    for (int i=0; i<N; i++) {
-                        prob.append("x_"+i+"_"+st);
-                        if (i<N-1) prob.append(" + ");
-                        else prob.append(" <= "+nmax+"\n");
-                    }
-                    s += 2;
                 }
             }
         }
@@ -1024,8 +1027,13 @@ public class MIPHandler {
                                         String crs = crss_it.next();
                                         Course c = Course.getCourseByCode(crs);
                                         prob.append(" x_"+c.getId()+"_"+s);
-                                        if (!crss_it.hasNext() && s2==s2max) 
+                                        if (!crss_it.hasNext() && s2==s2max) { 
+                                            if (cg.isSoftConstraint()) {
+                                                String sl=cg.getSlackVarName();
+                                                prob.append(" - "+sl);
+                                            }
                                             prob.append(" <= "+cgn+"\n");
+                                        }
                                         else prob.append(" + ");
                                     }
                                 }
@@ -1038,7 +1046,13 @@ public class MIPHandler {
                                 Course c = Course.getCourseByCode(crs);
                                 prob.append(" x_"+c.getId()+"_"+s);
                                 if (crss_it.hasNext()) prob.append(" + ");
-                                else prob.append(" <= "+cgn+"\n");
+                                else {
+                                    if (cg.isSoftConstraint()) {
+                                        String sl = cg.getSlackVarName();
+                                        prob.append(" - "+sl);
+                                    }
+                                    prob.append(" <= "+cgn+"\n");
+                                }
                             }
                         }
                     }
